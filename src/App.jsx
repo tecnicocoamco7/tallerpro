@@ -958,7 +958,17 @@ function Operatividad({ setModulo }) {
 function Usuarios({ setModulo }) {
   const { usuarios, setUsuarios, user, addLog } = useApp();
   const [form,setForm]=useState(null);
+  const [nuevo,setNuevo]=useState(null);
+  const [creando,setCreando]=useState(false);
+  const [errorNuevo,setErrorNuevo]=useState("");
   const esAdmin=user.rol==="admin";
+
+  async function recargarUsuarios(){
+    if(!supabase) return;
+    const { data, error } = await supabase.from("profiles").select("*").order("nombre");
+    if(!error) setUsuarios((data||[]).map(p=>({ id:p.id, nombre:p.nombre||p.email, usuario:p.email, rol:p.rol, activo:p.activo })));
+  }
+
   async function guardar(data){
     const { error } = await supabase.from("profiles").update({ nombre:data.nombre, rol:data.rol }).eq("id", data.id);
     if(error){ addLog("Error al guardar usuario", error.message); setForm(null); return; }
@@ -972,14 +982,26 @@ function Usuarios({ setModulo }) {
     setUsuarios(usuarios.map(x=>x.id===u.id?{...x,activo:false}:x));
     addLog(`Desactivó usuario: ${u.nombre}`);
   }
+  async function reactivar(u){
+    const { error } = await supabase.from("profiles").update({ activo:true }).eq("id", u.id);
+    if(error){ addLog("Error al reactivar usuario", error.message); return; }
+    setUsuarios(usuarios.map(x=>x.id===u.id?{...x,activo:true}:x));
+    addLog(`Reactivó usuario: ${u.nombre}`);
+  }
+  async function crearUsuario(data){
+    setCreando(true); setErrorNuevo("");
+    const { data: res, error } = await supabase.functions.invoke("create-user", { body: data });
+    setCreando(false);
+    const errMsg = error?.message || res?.error;
+    if(errMsg){ setErrorNuevo(errMsg); return; }
+    addLog(`Usuario creado: ${data.nombre||data.email}`);
+    setNuevo(null);
+    recargarUsuarios();
+  }
+
   if(!esAdmin)return <div><PageHeader title="Usuarios" onBack={()=>setModulo("dashboard")}/><Card><EmptyState msg="Solo administradores pueden gestionar usuarios."/></Card></div>;
   return <div>
-    <PageHeader title="Usuarios" onBack={()=>setModulo("dashboard")}/>
-    <Card style={{marginBottom:16}}>
-      <div style={{fontFamily:"DM Sans,sans-serif",fontSize:12,color:"#94a3b8",lineHeight:1.6}}>
-        Para dar de alta un nuevo usuario, creá su cuenta en <b>Supabase → Authentication → Users → Add user</b> con su email y una contraseña. Aparece acá automáticamente para asignarle nombre y rol.
-      </div>
-    </Card>
+    <PageHeader title="Usuarios" onBack={()=>setModulo("dashboard")} action={<Btn onClick={()=>{setNuevo({email:"",password:"",nombre:"",rol:"tecnico"});setErrorNuevo("");}}>+ Nuevo usuario</Btn>}/>
     <div style={{display:"flex",flexDirection:"column",gap:10}}>
       {usuarios.map(u=><Card key={u.id}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
@@ -988,6 +1010,7 @@ function Usuarios({ setModulo }) {
             <Badge color={u.activo?"#22c55e":"#64748b"}>{u.activo?"Activo":"Inactivo"}</Badge>
             {u.id!==user.id&&<Btn variant="secondary" sm onClick={()=>setForm(u)}>Editar</Btn>}
             {u.id!==user.id&&u.activo&&<Btn variant="danger" sm onClick={()=>desactivar(u)}>Desactivar</Btn>}
+            {u.id!==user.id&&!u.activo&&<Btn variant="success" sm onClick={()=>reactivar(u)}>Reactivar</Btn>}
           </div>
         </div>
       </Card>)}
@@ -997,6 +1020,16 @@ function Usuarios({ setModulo }) {
         <Field label="Nombre"><Input value={form.nombre} onChange={e=>setForm(p=>({...p,nombre:e.target.value}))}/></Field>
         <Field label="Rol"><Sel value={form.rol} onChange={e=>setForm(p=>({...p,rol:e.target.value}))} options={Object.entries(ROLES).map(([v,l])=>({v,l}))}/></Field>
         <div style={{display:"flex",gap:10,marginTop:8}}><Btn onClick={()=>guardar(form)}>Guardar</Btn><Btn variant="secondary" onClick={()=>setForm(null)}>Cancelar</Btn></div>
+      </div>
+    </Modal>}
+    {nuevo&&<Modal title="Nuevo usuario" onClose={()=>setNuevo(null)}>
+      <div style={{display:"flex",flexDirection:"column",gap:14}}>
+        <Field label="Email"><Input value={nuevo.email} onChange={e=>setNuevo(p=>({...p,email:e.target.value}))} placeholder="empleado@empresa.com"/></Field>
+        <Field label="Contraseña inicial"><Input value={nuevo.password} onChange={e=>setNuevo(p=>({...p,password:e.target.value}))} type="password" placeholder="mínimo 6 caracteres"/></Field>
+        <Field label="Nombre"><Input value={nuevo.nombre} onChange={e=>setNuevo(p=>({...p,nombre:e.target.value}))}/></Field>
+        <Field label="Rol"><Sel value={nuevo.rol} onChange={e=>setNuevo(p=>({...p,rol:e.target.value}))} options={Object.entries(ROLES).map(([v,l])=>({v,l}))}/></Field>
+        {errorNuevo&&<div style={{color:"#ef4444",fontSize:12,fontFamily:"DM Sans,sans-serif"}}>{errorNuevo}</div>}
+        <div style={{display:"flex",gap:10,marginTop:8}}><Btn disabled={creando} onClick={()=>crearUsuario(nuevo)}>{creando?"Creando…":"Crear usuario"}</Btn><Btn variant="secondary" onClick={()=>setNuevo(null)}>Cancelar</Btn></div>
       </div>
     </Modal>}
   </div>;
