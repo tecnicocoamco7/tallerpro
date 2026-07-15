@@ -78,10 +78,10 @@ function Field({ label, children, half, third }) {
     </div>
   );
 }
-function Input({ value, onChange, type="text", placeholder, textarea }) {
+function Input({ value, onChange, type="text", placeholder, textarea, ...rest }) {
   return textarea
-    ? <textarea style={{...iS,minHeight:80,resize:"vertical"}} value={value||""} onChange={onChange} placeholder={placeholder}/>
-    : <input style={iS} type={type} value={value||""} onChange={onChange} placeholder={placeholder}/>;
+    ? <textarea style={{...iS,minHeight:80,resize:"vertical"}} value={value||""} onChange={onChange} placeholder={placeholder} {...rest}/>
+    : <input style={iS} type={type} value={value||""} onChange={onChange} placeholder={placeholder} {...rest}/>;
 }
 function Sel({ value, onChange, options }) {
   return <select style={iS} value={value||""} onChange={onChange}>{options.map(o=><option key={o.v} value={o.v}>{o.l}</option>)}</select>;
@@ -1129,7 +1129,7 @@ function Login() {
   async function ingresar(){
     if(!supabase){ setError("Falta configurar Supabase (VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY)."); return; }
     setLoading(true); setError("");
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    const { error } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
     setLoading(false);
     if(error) setError("Email o contraseña incorrectos.");
   }
@@ -1143,7 +1143,7 @@ function Login() {
       </div>
       <Card>
         <div style={{display:"flex",flexDirection:"column",gap:16}}>
-          <Field label="Email"><Input value={email} onChange={e=>setEmail(e.target.value)} placeholder="tu_email@empresa.com"/></Field>
+          <Field label="Email"><Input value={email} onChange={e=>setEmail(e.target.value)} placeholder="tu_email@empresa.com" autoCapitalize="none" autoCorrect="off" autoComplete="username" spellCheck={false}/></Field>
           <Field label="Contraseña"><Input value={password} onChange={e=>setPassword(e.target.value)} type="password" placeholder="••••••••"/></Field>
           {error&&<div style={{color:"#ef4444",fontSize:12,fontFamily:"DM Sans,sans-serif",textAlign:"center"}}>{error}</div>}
           <Btn full disabled={loading} onClick={ingresar}>{loading?"Ingresando…":"Ingresar"}</Btn>
