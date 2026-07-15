@@ -1207,7 +1207,14 @@ export default function App() {
   useEffect(() => { if (user) cargarUsuarios(); }, [user?.id]);
 
   useEffect(() => {
+    // Importante: esta carga tiene que esperar a que haya una sesión confirmada.
+    // Si se dispara antes de eso, la base de datos bloquea la lectura (por seguridad,
+    // solo usuarios autenticados pueden leerla) y la app se queda con datos vacíos
+    // para siempre, porque este efecto no se vuelve a ejecutar solo.
     if (!supabase) { setLoaded(true); return; }
+    if (!authChecked) return;
+    if (!user) { setLoaded(true); return; }
+    setLoaded(false);
     (async () => {
       hydrating.current = true;
       const { data, error } = await supabase.from(STATE_TABLE).select("data").eq("id", STATE_ROW_ID).maybeSingle();
@@ -1226,7 +1233,7 @@ export default function App() {
       hydrating.current = false;
       setLoaded(true);
     })();
-  }, []);
+  }, [authChecked, user?.id]);
 
   useEffect(() => {
     if (!supabase || !loaded || hydrating.current) return;
@@ -1246,8 +1253,9 @@ export default function App() {
   const otCount = ordenesTrabajos.filter(o=>o.estado==="abierta"&&(user?.rol==="admin"||o.tecnicoId===user?.id)).length;
   const notifCount = user?(notificaciones[user.id]||[]).filter(n=>!n.visto).length:0;
 
-  if (!loaded || !authChecked) return <div style={{display:"flex",alignItems:"center",justifyContent:"center",height:"100vh",color:"#64748b",fontFamily:"DM Sans,sans-serif",background:"#070d1a"}}>Cargando…</div>;
+  if (!authChecked) return <div style={{display:"flex",alignItems:"center",justifyContent:"center",height:"100vh",color:"#64748b",fontFamily:"DM Sans,sans-serif",background:"#070d1a"}}>Cargando…</div>;
   if (!user) return <Login/>;
+  if (!loaded) return <div style={{display:"flex",alignItems:"center",justifyContent:"center",height:"100vh",color:"#64748b",fontFamily:"DM Sans,sans-serif",background:"#070d1a"}}>Cargando…</div>;
 
   const ctx = { user, usuarios, setUsuarios, clientes, setClientes, equipos, setEquipos, ordenesTrabajos, setOrdenesTrabajo, log, addLog, tiposEquipo, setTiposEquipo, estadosEquipo, setEstadosEquipo, notificaciones, setNotificaciones, etiquetasCliente, setEtiquetasCliente };
 
