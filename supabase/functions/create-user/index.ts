@@ -21,21 +21,24 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ error: "Config del servidor incompleta" }), { status: 500, headers: corsHeaders });
     }
 
-    // persistSession/autoRefreshToken en false: evita el error "Auth session missing"
-    // que tira la librería cuando corre en un servidor sin almacenamiento de sesión.
+    // Validamos el token con una llamada directa a la API de Auth, sin pasar por
+    // la lógica de "sesión" de la librería (que da falsos negativos en el servidor).
+    const whoResp = await fetch(`${supabaseUrl}/auth/v1/user`, {
+      headers: { Authorization: `Bearer ${jwt}`, apikey: serviceKey },
+    });
+    if (!whoResp.ok) {
+      return new Response(JSON.stringify({ error: "No autenticado" }), { status: 401, headers: corsHeaders });
+    }
+    const callerUser = await whoResp.json();
+
     const adminClient = createClient(supabaseUrl, serviceKey, {
       auth: { persistSession: false, autoRefreshToken: false },
     });
 
-    const { data: userData, error: userErr } = await adminClient.auth.getUser(jwt);
-    if (userErr || !userData?.user) {
-      return new Response(JSON.stringify({ error: "No autenticado" }), { status: 401, headers: corsHeaders });
-    }
-
     const { data: callerProfile } = await adminClient
       .from("profiles")
       .select("rol")
-      .eq("id", userData.user.id)
+      .eq("id", callerUser.id)
       .maybeSingle();
 
     if (!callerProfile || callerProfile.rol !== "admin") {
