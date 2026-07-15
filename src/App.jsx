@@ -565,7 +565,7 @@ function Equipos({ setModulo }) {
       <PageHeader title="Equipos" onBack={()=>setModulo("dashboard")}
         action={<div style={{display:"flex",gap:8}}>
           {esAdmin&&<Btn variant="secondary" onClick={()=>setGestorTipos(true)}>⚙ Tipos</Btn>}
-          {esAdmin&&<Btn onClick={()=>setForm({tipo:tiposEquipo[0]||"",marca:"",modelo:"",serie:"",horometro:"",clienteId:"",ubicacion:"",estado:estadosEquipo[0]?.id||"operativo",observaciones:""})}>+ Nuevo equipo</Btn>}
+          {esAdmin&&<Btn onClick={()=>setForm({tipo:tiposEquipo[0]||"",marca:"",modelo:"",serie:"",horometro:"",clienteId:"",ubicacion:"",estado:estadosEquipo[0]?.id||"operativo",observaciones:"",esElectrico:false,bateriaAsignadaId:null,cargadorAsignadoId:null})}>+ Nuevo equipo</Btn>}
         </div>}/>
 
       {/* Contadores */}
@@ -619,7 +619,7 @@ function Equipos({ setModulo }) {
       </div>
 
       {form&&<Modal title={form.id?"Editar equipo":"Nuevo equipo"} onClose={()=>setForm(null)} wide>
-        <EquipoForm data={form} clientes={clientes} tiposEquipo={tiposEquipo} estadosEquipo={estadosEquipo} onSave={guardar} onCancel={()=>setForm(null)}/>
+        <EquipoForm data={form} equipos={equipos} clientes={clientes} tiposEquipo={tiposEquipo} estadosEquipo={estadosEquipo} onSave={guardar} onCancel={()=>setForm(null)}/>
       </Modal>}
       {gestorTipos&&<Modal title="Gestionar tipos de equipo" onClose={()=>setGestorTipos(false)}>
         <GestorLista items={tiposEquipo} setItems={setTiposEquipo} placeholder="Nuevo tipo..." onClose={()=>setGestorTipos(false)}/>
@@ -682,6 +682,21 @@ function PerfilEquipo({ equipoId, onVolver, setModulo }) {
       {eq.observaciones&&<div style={{marginTop:12,padding:10,background:"#070d1a",borderRadius:8,fontFamily:"DM Sans,sans-serif",color:"#94a3b8",fontSize:13}}>{eq.observaciones}</div>}
     </Card>
 
+    {(eq.tipo==="Montacargas"&&eq.esElectrico&&(eq.bateriaAsignadaId||eq.cargadorAsignadoId))&&<Card style={{marginBottom:16}}>
+      <SecLabel>Componentes asignados</SecLabel>
+      <div style={{display:"flex",flexDirection:"column",gap:8,marginTop:10}}>
+        {eq.bateriaAsignadaId&&(()=>{const b=equipos.find(x=>x.id===eq.bateriaAsignadaId);return b?<div style={{fontFamily:"DM Sans,sans-serif",fontSize:13,color:"#e2e8f0"}}>🔋 Batería: {b.marca} {b.modelo} — Serie: <span style={{color:"#f97316",fontWeight:700}}>{b.serie}</span></div>:null;})()}
+        {eq.cargadorAsignadoId&&(()=>{const c=equipos.find(x=>x.id===eq.cargadorAsignadoId);return c?<div style={{fontFamily:"DM Sans,sans-serif",fontSize:13,color:"#e2e8f0"}}>🔌 Cargador: {c.marca} {c.modelo} — Serie: <span style={{color:"#f97316",fontWeight:700}}>{c.serie}</span></div>:null;})()}
+      </div>
+    </Card>}
+    {(eq.tipo==="Batería"||eq.tipo==="Cargador")&&(()=>{
+      const m=equipos.find(x=>x.tipo==="Montacargas"&&x.esElectrico&&(x.bateriaAsignadaId===eq.id||x.cargadorAsignadoId===eq.id));
+      return m?<Card style={{marginBottom:16}}>
+        <SecLabel>Asignado a</SecLabel>
+        <div style={{fontFamily:"DM Sans,sans-serif",fontSize:13,color:"#e2e8f0",marginTop:10}}>🏗 Montacargas: {m.marca} {m.modelo} — Serie: <span style={{color:"#f97316",fontWeight:700}}>{m.serie}</span></div>
+      </Card>:null;
+    })()}
+
     <Card style={{marginBottom:16}}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
         <SecLabel>Cambiar estado</SecLabel>
@@ -721,7 +736,7 @@ function PerfilEquipo({ equipoId, onVolver, setModulo }) {
     })}
 
     {formEditar&&<Modal title="Editar equipo" onClose={()=>setFormEditar(null)} wide>
-      <EquipoForm data={formEditar} clientes={clientes} tiposEquipo={tiposEquipo} estadosEquipo={estadosEquipo} onSave={d=>{setEquipos(equipos.map(e=>e.id===eq.id?{...e,...d}:e));addLog(`Editó equipo: ${eq.serie}`);setFormEditar(null);}} onCancel={()=>setFormEditar(null)}/>
+      <EquipoForm data={formEditar} equipos={equipos} clientes={clientes} tiposEquipo={tiposEquipo} estadosEquipo={estadosEquipo} onSave={d=>{setEquipos(equipos.map(e=>e.id===eq.id?{...e,...d}:e));addLog(`Editó equipo: ${eq.serie}`);setFormEditar(null);}} onCancel={()=>setFormEditar(null)}/>
     </Modal>}
     {gestorEst&&<Modal title="Gestionar estados" onClose={()=>setGestorEst(false)}><GestorEstados estados={estadosEquipo} setEstados={setEstadosEquipo} onClose={()=>setGestorEst(false)}/></Modal>}
     {formOT&&<Modal title="Nueva OT" onClose={()=>setFormOT(null)} wide><OTForm data={formOT} equipos={equipos} clientes={clientes} usuarios={usuarios} onSave={guardarOT} onCancel={()=>setFormOT(null)}/></Modal>}
@@ -729,10 +744,16 @@ function PerfilEquipo({ equipoId, onVolver, setModulo }) {
   </div>;
 }
 
-function EquipoForm({ data, clientes, tiposEquipo, estadosEquipo, onSave, onCancel }) {
+function EquipoForm({ data, equipos, clientes, tiposEquipo, estadosEquipo, onSave, onCancel }) {
   const [f,setF]=useState(data); const set=(k,v)=>setF(p=>({...p,[k]:v}));
+  function setTipo(v){
+    setF(p=>({...p, tipo:v, ...(v!=="Montacargas"?{esElectrico:false,bateriaAsignadaId:null,cargadorAsignadoId:null}:{})}));
+  }
+  const otrosEquipos = (equipos||[]).filter(e=>e.id!==f.id);
+  const bateriasDisponibles = otrosEquipos.filter(e=>e.tipo==="Batería");
+  const cargadoresDisponibles = otrosEquipos.filter(e=>e.tipo==="Cargador");
   return <div style={{display:"flex",flexWrap:"wrap",gap:14}}>
-    <Field label="Tipo"><Sel value={f.tipo} onChange={e=>set("tipo",e.target.value)} options={tiposEquipo.map(t=>({v:t,l:t}))}/></Field>
+    <Field label="Tipo"><Sel value={f.tipo} onChange={e=>setTipo(e.target.value)} options={tiposEquipo.map(t=>({v:t,l:t}))}/></Field>
     <Field label="Marca" half><Input value={f.marca} onChange={e=>set("marca",e.target.value)} placeholder="Crown, Enersys..."/></Field>
     <Field label="Modelo" half><Input value={f.modelo} onChange={e=>set("modelo",e.target.value)}/></Field>
     <Field label="Número de serie"><Input value={f.serie} onChange={e=>set("serie",e.target.value)} placeholder="CRW-2024-001"/></Field>
@@ -740,6 +761,16 @@ function EquipoForm({ data, clientes, tiposEquipo, estadosEquipo, onSave, onCanc
     <Field label="Cliente" half><Sel value={f.clienteId||""} onChange={e=>set("clienteId",Number(e.target.value))} options={[{v:"",l:"— Sin cliente —"},...clientes.map(c=>({v:c.id,l:c.nombre}))]}/></Field>
     <Field label="Ubicación"><Input value={f.ubicacion} onChange={e=>set("ubicacion",e.target.value)} placeholder="Taller, obra, sitio..."/></Field>
     <Field label="Estado"><Sel value={f.estado} onChange={e=>set("estado",e.target.value)} options={estadosEquipo.map(e=>({v:e.id,l:e.label}))}/></Field>
+    {f.tipo==="Montacargas"&&<div style={{width:"100%",display:"flex",flexDirection:"column",gap:10,padding:12,background:"#070d1a",border:"1px solid #1e293b",borderRadius:8}}>
+      <label style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer",fontFamily:"DM Sans,sans-serif",fontSize:13,color:"#e2e8f0"}}>
+        <input type="checkbox" checked={!!f.esElectrico} onChange={e=>set("esElectrico",e.target.checked)}/>
+        ¿Es eléctrico? (tiene batería y cargador asignados)
+      </label>
+      {f.esElectrico&&<>
+        <Field label="Batería asignada"><BuscadorEquipo equipos={bateriasDisponibles} clientes={clientes} selected={f.bateriaAsignadaId} onSelect={id=>set("bateriaAsignadaId",id)}/></Field>
+        <Field label="Cargador asignado"><BuscadorEquipo equipos={cargadoresDisponibles} clientes={clientes} selected={f.cargadorAsignadoId} onSelect={id=>set("cargadorAsignadoId",id)}/></Field>
+      </>}
+    </div>}
     <Field label="Observaciones"><Input value={f.observaciones} onChange={e=>set("observaciones",e.target.value)} textarea/></Field>
     <div style={{display:"flex",gap:10,width:"100%",marginTop:4}}><Btn onClick={()=>onSave(f)}>Guardar</Btn><Btn variant="secondary" onClick={onCancel}>Cancelar</Btn></div>
   </div>;
@@ -845,12 +876,10 @@ function ClienteDetalle({ cliente: c, onEdit }) {
 
 // ── OPERATIVIDAD ──────────────────────────────────────────────────────────────
 function Operatividad({ setModulo }) {
-  const { clientes, equipos, estadosEquipo, etiquetasCliente } = useApp();
+  const { clientes, equipos, estadosEquipo } = useApp();
   const [mes, setMes] = useState(()=>{
     const hoy=new Date(); return `${hoy.getFullYear()}-${String(hoy.getMonth()+1).padStart(2,"0")}`;
   });
-  const [etiqFiltro, setEtiqFiltro] = useState(etiquetasCliente[0]||"");
-
   function calcOpCliente(cliente) {
     const eqsCli = equipos.filter(e=>e.clienteId===cliente.id);
     if (!eqsCli.length) return { pct:100, equipos:[] };
@@ -882,26 +911,19 @@ function Operatividad({ setModulo }) {
   }
 
   const clientesFiltrados = clientes
-    .filter(c=>!etiqFiltro||c.etiqueta===etiqFiltro)
+    .filter(c=>c.etiqueta==="Alquiler")
     .map(c=>({ ...c, ...calcOpCliente(c) }))
     .sort((a,b)=>b.pct-a.pct);
 
   function colorPct(p){ return p>=90?"#22c55e":p>=70?"#f59e0b":"#ef4444"; }
 
   return <div>
-    <PageHeader title="Operatividad de clientes" sub="Porcentaje de operación por cliente en el mes" onBack={()=>setModulo("dashboard")}/>
+    <PageHeader title="Operatividad de clientes" sub="Porcentaje de operación en el mes — solo clientes de alquiler" onBack={()=>setModulo("dashboard")}/>
 
     <div style={{display:"flex",gap:12,marginBottom:20,flexWrap:"wrap",alignItems:"center"}}>
       <div style={{display:"flex",gap:6,alignItems:"center"}}>
         <span style={{fontFamily:"DM Sans,sans-serif",fontSize:11,color:"#64748b",fontWeight:600,textTransform:"uppercase"}}>Mes:</span>
         <input type="month" style={{...iS,width:"auto",padding:"6px 10px"}} value={mes} onChange={e=>setMes(e.target.value)}/>
-      </div>
-      <div style={{display:"flex",gap:6,alignItems:"center"}}>
-        <span style={{fontFamily:"DM Sans,sans-serif",fontSize:11,color:"#64748b",fontWeight:600,textTransform:"uppercase"}}>Etiqueta:</span>
-        <select style={{...iS,width:"auto",padding:"6px 10px",fontSize:12}} value={etiqFiltro} onChange={e=>setEtiqFiltro(e.target.value)}>
-          <option value="">Todos</option>
-          {etiquetasCliente.map(et=><option key={et} value={et}>{et}</option>)}
-        </select>
       </div>
     </div>
 
@@ -949,7 +971,7 @@ function Operatividad({ setModulo }) {
           })}
         </Card>
       ))}
-      {clientesFiltrados.length===0&&<EmptyState msg="No hay clientes con esta etiqueta."/>}
+      {clientesFiltrados.length===0&&<EmptyState msg="No hay clientes de alquiler registrados."/>}
     </div>
   </div>;
 }
@@ -961,6 +983,9 @@ function Usuarios({ setModulo }) {
   const [nuevo,setNuevo]=useState(null);
   const [creando,setCreando]=useState(false);
   const [errorNuevo,setErrorNuevo]=useState("");
+  const [reset,setReset]=useState(null);
+  const [reseteando,setReseteando]=useState(false);
+  const [errorReset,setErrorReset]=useState("");
   const esAdmin=user.rol==="admin";
 
   async function recargarUsuarios(){
@@ -990,7 +1015,7 @@ function Usuarios({ setModulo }) {
   }
   async function crearUsuario(data){
     setCreando(true); setErrorNuevo("");
-    const { data: res, error } = await supabase.functions.invoke("create-user", { body: data });
+    const { data: res, error } = await supabase.functions.invoke("create-user", { body: { accion:"crear", ...data } });
     setCreando(false);
     const errMsg = error?.message || res?.error;
     if(errMsg){ setErrorNuevo(errMsg); return; }
@@ -998,16 +1023,26 @@ function Usuarios({ setModulo }) {
     setNuevo(null);
     recargarUsuarios();
   }
+  async function restablecer(){
+    setReseteando(true); setErrorReset("");
+    const { data: res, error } = await supabase.functions.invoke("create-user", { body: { accion:"reset-password", userId: reset.id, password: reset.password } });
+    setReseteando(false);
+    const errMsg = error?.message || res?.error;
+    if(errMsg){ setErrorReset(errMsg); return; }
+    addLog(`Restableció contraseña de: ${reset.nombre}`);
+    setReset(null);
+  }
 
   if(!esAdmin)return <div><PageHeader title="Usuarios" onBack={()=>setModulo("dashboard")}/><Card><EmptyState msg="Solo administradores pueden gestionar usuarios."/></Card></div>;
   return <div>
     <PageHeader title="Usuarios" onBack={()=>setModulo("dashboard")} action={<Btn onClick={()=>{setNuevo({email:"",password:"",nombre:"",rol:"tecnico"});setErrorNuevo("");}}>+ Nuevo usuario</Btn>}/>
     <div style={{display:"flex",flexDirection:"column",gap:10}}>
       {usuarios.map(u=><Card key={u.id}>
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:8}}>
           <div><div style={{fontFamily:"Syne,sans-serif",fontWeight:700,color:"#f1f5f9",fontSize:15}}>{u.nombre}</div><div style={{fontFamily:"DM Sans,sans-serif",color:"#64748b",fontSize:12,marginTop:2}}>{u.usuario} · {ROLES[u.rol]}</div></div>
-          <div style={{display:"flex",gap:8,alignItems:"center"}}>
+          <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
             <Badge color={u.activo?"#22c55e":"#64748b"}>{u.activo?"Activo":"Inactivo"}</Badge>
+            <Btn variant="secondary" sm onClick={()=>{setReset({id:u.id,nombre:u.nombre,password:""});setErrorReset("");}}>🔑 Restablecer contraseña</Btn>
             {u.id!==user.id&&<Btn variant="secondary" sm onClick={()=>setForm(u)}>Editar</Btn>}
             {u.id!==user.id&&u.activo&&<Btn variant="danger" sm onClick={()=>desactivar(u)}>Desactivar</Btn>}
             {u.id!==user.id&&!u.activo&&<Btn variant="success" sm onClick={()=>reactivar(u)}>Reactivar</Btn>}
@@ -1030,6 +1065,13 @@ function Usuarios({ setModulo }) {
         <Field label="Rol"><Sel value={nuevo.rol} onChange={e=>setNuevo(p=>({...p,rol:e.target.value}))} options={Object.entries(ROLES).map(([v,l])=>({v,l}))}/></Field>
         {errorNuevo&&<div style={{color:"#ef4444",fontSize:12,fontFamily:"DM Sans,sans-serif"}}>{errorNuevo}</div>}
         <div style={{display:"flex",gap:10,marginTop:8}}><Btn disabled={creando} onClick={()=>crearUsuario(nuevo)}>{creando?"Creando…":"Crear usuario"}</Btn><Btn variant="secondary" onClick={()=>setNuevo(null)}>Cancelar</Btn></div>
+      </div>
+    </Modal>}
+    {reset&&<Modal title={`Restablecer contraseña — ${reset.nombre}`} onClose={()=>setReset(null)}>
+      <div style={{display:"flex",flexDirection:"column",gap:14}}>
+        <Field label="Contraseña nueva"><Input value={reset.password} onChange={e=>setReset(p=>({...p,password:e.target.value}))} type="password" placeholder="mínimo 6 caracteres"/></Field>
+        {errorReset&&<div style={{color:"#ef4444",fontSize:12,fontFamily:"DM Sans,sans-serif"}}>{errorReset}</div>}
+        <div style={{display:"flex",gap:10,marginTop:8}}><Btn disabled={reseteando} onClick={restablecer}>{reseteando?"Guardando…":"Guardar nueva contraseña"}</Btn><Btn variant="secondary" onClick={()=>setReset(null)}>Cancelar</Btn></div>
       </div>
     </Modal>}
   </div>;
@@ -1238,7 +1280,6 @@ export default function App() {
       <aside className="sd" style={{width:220,background:"#0a1120",borderRight:"1px solid #1e293b",display:"flex",flexDirection:"column",padding:"20px 0",flexShrink:0,height:"100vh"}}>
         <div style={{padding:"0 18px 20px",borderBottom:"1px solid #1e293b",marginBottom:12}}>
           <div style={{fontFamily:"Syne,sans-serif",fontSize:17,fontWeight:800,color:"#f97316"}}>⚙️ TallerPro</div>
-          <div style={{fontFamily:"DM Sans,sans-serif",fontSize:10,color:"#475569",textTransform:"uppercase",letterSpacing:"0.1em",marginTop:2}}>Baterías & Cargadores</div>
         </div>
         <nav style={{flex:1,padding:"0 10px",overflowY:"auto"}}>{MODULOS.map(m=><NavBtn key={m.id} m={m}/>)}</nav>
         <div style={{padding:"16px 18px",borderTop:"1px solid #1e293b"}}>

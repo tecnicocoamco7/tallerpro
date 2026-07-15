@@ -34,10 +34,29 @@ Deno.serve(async (req) => {
       .maybeSingle();
 
     if (!callerProfile || callerProfile.rol !== "admin") {
-      return new Response(JSON.stringify({ error: "Solo administradores pueden crear usuarios" }), { status: 403, headers: corsHeaders });
+      return new Response(JSON.stringify({ error: "Solo administradores pueden hacer esto" }), { status: 403, headers: corsHeaders });
     }
 
-    const { email, password, nombre, rol } = await req.json();
+    const body = await req.json();
+    const accion = body.accion || "crear";
+
+    if (accion === "reset-password") {
+      const { userId, password } = body;
+      if (!userId || !password) {
+        return new Response(JSON.stringify({ error: "Falta userId o password" }), { status: 400, headers: corsHeaders });
+      }
+      if (password.length < 6) {
+        return new Response(JSON.stringify({ error: "La contraseña debe tener al menos 6 caracteres" }), { status: 400, headers: corsHeaders });
+      }
+      const { error: updErr } = await adminClient.auth.admin.updateUserById(userId, { password });
+      if (updErr) {
+        return new Response(JSON.stringify({ error: updErr.message }), { status: 400, headers: corsHeaders });
+      }
+      return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+
+    // accion === "crear" (por defecto)
+    const { email, password, nombre, rol } = body;
     if (!email || !password) {
       return new Response(JSON.stringify({ error: "Falta email o contraseña" }), { status: 400, headers: corsHeaders });
     }
@@ -52,7 +71,6 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ error: createErr.message }), { status: 400, headers: corsHeaders });
     }
 
-    // El trigger ya crea la fila en profiles con rol "tecnico"; la actualizamos con nombre y rol elegidos.
     await adminClient.from("profiles").update({
       nombre: nombre || email,
       rol: rol === "admin" ? "admin" : "tecnico",
