@@ -1181,6 +1181,7 @@ export default function App() {
   const [loaded, setLoaded] = useState(!supabase);
   const [authChecked, setAuthChecked] = useState(!supabase);
   const hydrating = useRef(false);
+  const hydratedConUsuario = useRef(false);
 
   async function cargarPerfil(session) {
     if (!session) { setUser(null); return; }
@@ -1199,7 +1200,15 @@ export default function App() {
 
   useEffect(() => {
     if (!supabase) { setAuthChecked(true); return; }
-    supabase.auth.getSession().then(({ data }) => { cargarPerfil(data.session); setAuthChecked(true); });
+    // Importante: hay que esperar a que cargarPerfil termine (con await) antes de marcar
+    // authChecked=true. Si no, hay una fracción de segundo donde "ya sabemos que no hay
+    // que mostrar el login" pero "user" todavía es null, y en ese instante el resto de la
+    // app puede pensar que no hay datos y sobreescribir lo guardado con datos vacíos.
+    (async () => {
+      const { data } = await supabase.auth.getSession();
+      await cargarPerfil(data.session);
+      setAuthChecked(true);
+    })();
     const { data: sub } = supabase.auth.onAuthStateChange((_evt, session) => { cargarPerfil(session); });
     return () => sub.subscription.unsubscribe();
   }, []);
@@ -1231,12 +1240,13 @@ export default function App() {
         if (s.etiquetasCliente) setEtiquetasCliente(s.etiquetasCliente);
       }
       hydrating.current = false;
+      hydratedConUsuario.current = true;
       setLoaded(true);
     })();
   }, [authChecked, user?.id]);
 
   useEffect(() => {
-    if (!supabase || !loaded || hydrating.current) return;
+    if (!supabase || !loaded || hydrating.current || !hydratedConUsuario.current) return;
     const t = setTimeout(() => {
       supabase.from(STATE_TABLE).upsert({
         id: STATE_ROW_ID,
