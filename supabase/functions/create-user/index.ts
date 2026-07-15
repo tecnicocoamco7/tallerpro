@@ -10,21 +10,22 @@ Deno.serve(async (req) => {
 
   try {
     const authHeader = req.headers.get("Authorization") ?? "";
+    const jwt = authHeader.replace(/^Bearer\s+/i, "");
     const supabaseUrl = Deno.env.get("SUPABASE_URL");
-    const anonKey = Deno.env.get("SUPABASE_ANON_KEY");
     const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
 
-    // Cliente con la sesión de quien llama, para saber quién es.
-    const callerClient = createClient(supabaseUrl, anonKey, {
-      global: { headers: { Authorization: authHeader } },
-    });
-    const { data: userData, error: userErr } = await callerClient.auth.getUser();
-    if (userErr || !userData?.user) {
-      return new Response(JSON.stringify({ error: "No autenticado" }), { status: 401, headers: corsHeaders });
+    if (!jwt) {
+      return new Response(JSON.stringify({ error: "No autenticado (falta token)" }), { status: 401, headers: corsHeaders });
     }
 
     // Cliente con privilegios de administrador. Esta clave vive solo en el servidor, nunca en el navegador.
     const adminClient = createClient(supabaseUrl, serviceKey);
+
+    // Verificar el token del que llama usando el cliente admin (no depende de la clave anon).
+    const { data: userData, error: userErr } = await adminClient.auth.getUser(jwt);
+    if (userErr || !userData?.user) {
+      return new Response(JSON.stringify({ error: "No autenticado" }), { status: 401, headers: corsHeaders });
+    }
 
     // Verificar que quien llama ya es admin.
     const { data: callerProfile } = await adminClient
