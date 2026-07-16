@@ -324,9 +324,12 @@ function Dashboard({ setModulo }) {
     const diasTranscurridos = Math.max(0.0001, (finEfectivo-inicioMes)/86400000);
     let totalPct = 0;
     eqsCliente.forEach(eq=>{
-      const { diasInoperativo } = reconstruirDiasEstado(eq.historialEstado, eq.estado, inicioMes, finEfectivo);
-      const diasInop = Math.min(diasInoperativo, diasTranscurridos);
-      totalPct += Math.max(0, ((diasTranscurridos-diasInop)/diasTranscurridos)*100);
+      const ingreso = eq.fechaIngreso ? new Date(eq.fechaIngreso) : inicioMes;
+      const inicioEq = ingreso > inicioMes ? ingreso : inicioMes;
+      const diasTranscurridosEq = Math.max(0.0001, (finEfectivo-inicioEq)/86400000);
+      const { diasInoperativo } = reconstruirDiasEstado(eq.historialEstado, eq.estado, inicioEq, finEfectivo);
+      const diasInop = Math.min(diasInoperativo, diasTranscurridosEq);
+      totalPct += Math.max(0, ((diasTranscurridosEq-diasInop)/diasTranscurridosEq)*100);
     });
     return { ...c, pct: Math.round(totalPct/eqsCliente.length) };
   }).sort((a,b)=>b.pct-a.pct);
@@ -574,6 +577,10 @@ function Equipos({ setModulo }) {
   const operativos   = equipos.filter(e=>e.estado==="operativo").length;
   const inoperativos = equipos.filter(e=>e.estado!=="operativo").length;
 
+  const desgloseTotal       = tiposEquipo.map(t=>({tipo:t,count:equipos.filter(e=>e.tipo===t).length})).filter(x=>x.count>0);
+  const desgloseOperativos  = tiposEquipo.map(t=>({tipo:t,count:equipos.filter(e=>e.tipo===t&&e.estado==="operativo").length})).filter(x=>x.count>0);
+  const desgloseInoperativos= tiposEquipo.map(t=>({tipo:t,count:equipos.filter(e=>e.tipo===t&&e.estado!=="operativo").length})).filter(x=>x.count>0);
+
   if (perfilId) return <PerfilEquipo equipoId={perfilId} onVolver={()=>setPerfilId(null)} setModulo={setModulo}/>;
 
   const modelosDelTipo = filtroTipo!=="todos" ? (modelosPorTipo[filtroTipo]||[]) : [];
@@ -600,10 +607,21 @@ function Equipos({ setModulo }) {
 
       {/* Contadores */}
       <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:12,marginBottom:20}}>
-        {[{l:"Total equipos",v:totalEq,c:"#3b82f6"},{l:"Operativos",v:operativos,c:"#22c55e"},{l:"Inoperativos",v:inoperativos,c:"#ef4444"}].map(s=>(
-          <Card key={s.l} style={{textAlign:"center",padding:"14px"}}>
-            <div style={{fontFamily:"Syne,sans-serif",fontSize:26,fontWeight:800,color:s.c}}>{s.v}</div>
-            <div style={{fontFamily:"DM Sans,sans-serif",fontSize:11,color:"#64748b",textTransform:"uppercase"}}>{s.l}</div>
+        {[{l:"Total equipos",v:totalEq,c:"#3b82f6",desglose:desgloseTotal},{l:"Operativos",v:operativos,c:"#22c55e",desglose:desgloseOperativos},{l:"Inoperativos",v:inoperativos,c:"#ef4444",desglose:desgloseInoperativos}].map(s=>(
+          <Card key={s.l} style={{padding:"14px"}}>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:12}}>
+              <div style={{textAlign:"center",flexShrink:0}}>
+                <div style={{fontFamily:"Syne,sans-serif",fontSize:26,fontWeight:800,color:s.c}}>{s.v}</div>
+                <div style={{fontFamily:"DM Sans,sans-serif",fontSize:11,color:"#64748b",textTransform:"uppercase",whiteSpace:"nowrap"}}>{s.l}</div>
+              </div>
+              {s.desglose.length>0&&<div style={{display:"flex",flexDirection:"column",gap:2,textAlign:"right",overflow:"hidden"}}>
+                {s.desglose.map(d=>(
+                  <div key={d.tipo} style={{fontFamily:"DM Sans,sans-serif",fontSize:11,color:"#94a3b8",display:"flex",justifyContent:"space-between",gap:8,whiteSpace:"nowrap"}}>
+                    <span style={{overflow:"hidden",textOverflow:"ellipsis"}}>{d.tipo}</span><span style={{color:s.c,fontWeight:700}}>{d.count}</span>
+                  </div>
+                ))}
+              </div>}
+            </div>
           </Card>
         ))}
       </div>
@@ -707,6 +725,13 @@ function PerfilEquipo({ equipoId, onVolver, setModulo }) {
     addLog(`${eq.serie}: ${nuevo?"marcado":"desmarcado"} como esperando repuestos`);
   }
 
+  function eliminarEquipo(){
+    if(!window.confirm(`¿Seguro que querés eliminar el equipo ${eq.serie}? Esta acción no se puede deshacer.`)) return;
+    setEquipos(equipos.filter(e=>e.id!==eq.id));
+    addLog(`Eliminó equipo: ${eq.serie}`);
+    onVolver();
+  }
+
   function guardarOT(data){
     const nueva={...data,id:uid(),equipoId:eq.id,clienteId:eq.clienteId,estado:"abierta",fecha:new Date().toISOString(),fechaCierre:null,comentarios:[],creadoPor:user.id};
     setOrdenesTrabajo([...ordenesTrabajos,nueva]);
@@ -729,7 +754,10 @@ function PerfilEquipo({ equipoId, onVolver, setModulo }) {
           <Badge color={est.color}>{est.label}</Badge>
           {eq.esperandoRepuestos&&<Badge color="#f59e0b">⏳ Esperando repuestos</Badge>}
         </div>
-        {esAdmin&&<Btn variant="secondary" sm onClick={()=>setFormEditar({...eq})}>✏️ Editar</Btn>}
+        <div style={{display:"flex",gap:6}}>
+          {esAdmin&&<Btn variant="secondary" sm onClick={()=>setFormEditar({...eq})}>✏️ Editar</Btn>}
+          {esAdmin&&<Btn variant="danger" sm onClick={eliminarEquipo}>🗑 Eliminar</Btn>}
+        </div>
       </div>
     </div>
 
@@ -997,9 +1025,13 @@ function Operatividad({ setModulo }) {
     const diasTranscurridos = Math.max(0.0001,(finEfectivo-inicioMes)/86400000);
 
     const eqsCalc = eqsCli.map(eq=>{
-      const { diasInoperativo } = reconstruirDiasEstado(eq.historialEstado, eq.estado, inicioMes, finEfectivo);
-      const diasInop = Math.min(diasInoperativo, diasTranscurridos);
-      const pct=Math.max(0,Math.round(((diasTranscurridos-diasInop)/diasTranscurridos)*100));
+      // No contar días previos a que el equipo existiera en el sistema.
+      const ingreso = eq.fechaIngreso ? new Date(eq.fechaIngreso) : inicioMes;
+      const inicioEq = ingreso > inicioMes ? ingreso : inicioMes;
+      const diasTranscurridosEq = Math.max(0.0001,(finEfectivo-inicioEq)/86400000);
+      const { diasInoperativo } = reconstruirDiasEstado(eq.historialEstado, eq.estado, inicioEq, finEfectivo);
+      const diasInop = Math.min(diasInoperativo, diasTranscurridosEq);
+      const pct=Math.max(0,Math.round(((diasTranscurridosEq-diasInop)/diasTranscurridosEq)*100));
       return { ...eq, diasInop: Math.round(diasInop*10)/10, pct };
     });
 
