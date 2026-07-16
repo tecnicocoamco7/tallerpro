@@ -7,6 +7,31 @@ const uid = () => Date.now() + Math.floor(Math.random() * 9999);
 const fmt = (f) => f ? new Date(f).toLocaleDateString("es", { day:"2-digit", month:"short", year:"numeric" }) : "—";
 const fmtDT = (f) => f ? new Date(f).toLocaleString("es", { day:"2-digit", month:"short", year:"numeric", hour:"2-digit", minute:"2-digit" }) : "—";
 const diasDesde = (fecha) => Math.floor((Date.now() - new Date(fecha)) / 86400000);
+
+// Reconstruye cuántos días (con decimales) un equipo estuvo "operativo" vs en otro estado,
+// entre dos fechas, usando las fechas reales de cambio de estado (no la cantidad de clics).
+function reconstruirDiasEstado(historial, estadoActual, desde, hasta) {
+  if (hasta <= desde) return { diasOperativo: 0, diasInoperativo: 0 };
+  const eventos = (historial||[]).slice().sort((a,b)=>new Date(a.fecha)-new Date(b.fecha));
+
+  let estadoVigente = null;
+  for (const h of eventos) { if (new Date(h.fecha) <= desde) estadoVigente = h.estado; }
+  if (estadoVigente === null) estadoVigente = eventos.length ? eventos[0].estado : estadoActual;
+
+  const enRango = eventos.filter(h=>{ const d=new Date(h.fecha); return d>desde && d<=hasta; });
+
+  let diasOperativo=0, diasInoperativo=0, cursor=desde;
+  for (const ev of enRango) {
+    const f = new Date(ev.fecha);
+    const dias = (f-cursor)/86400000;
+    if (estadoVigente==="operativo") diasOperativo+=dias; else diasInoperativo+=dias;
+    estadoVigente = ev.estado;
+    cursor = f;
+  }
+  const diasFinales = (hasta-cursor)/86400000;
+  if (estadoVigente==="operativo") diasOperativo+=diasFinales; else diasInoperativo+=diasFinales;
+  return { diasOperativo, diasInoperativo };
+}
 const fonts = `@import url('https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Sans:wght@400;500;600&display=swap');`;
 
 const PRIORIDADES = [
@@ -17,7 +42,6 @@ const PRIORIDADES = [
 const ESTADOS_SEED = [
   { id:"operativo",           label:"Operativo",           color:"#22c55e" },
   { id:"inoperativo",         label:"Inoperativo",         color:"#ef4444" },
-  { id:"esperando_repuestos", label:"Esperando repuestos", color:"#f59e0b" },
   { id:"fuera_servicio",      label:"Fuera de servicio",   color:"#dc2626" },
 ];
 const TIPOS_EQUIPO_SEED = ["Batería","Cargador","Generador","Compresor","Montacargas","Excavadora","Grúa","Camión","Otro"];
@@ -285,22 +309,24 @@ function Dashboard({ setModulo }) {
   const operativos   = equipos.filter(e=>e.estado==="operativo").length;
   const inoperativos = equipos.filter(e=>e.estado!=="operativo").length;
 
-  // Operatividad de clientes de alquiler (primer etiqueta = alquiler)
-  const etiqAlquiler = etiquetasCliente[0];
-  const clientesAlquiler = clientes.filter(c=>c.etiqueta===etiqAlquiler);
+  // Operatividad de clientes de alquiler
+  const clientesAlquiler = clientes.filter(c=>c.etiqueta==="Alquiler");
   const opClientes = clientesAlquiler.map(c=>{
-    const eqsCliente = equipos.filter(e=>e.clienteId===c.id);
+    const eqsCliente = equipos.filter(e=>e.clienteId===c.id && e.tipo!=="Batería" && e.tipo!=="Cargador");
     if (!eqsCliente.length) return { ...c, pct:100 };
+    const diaCorte = Math.min(31, Math.max(1, c.diaCorteMes || 1));
     const hoy = new Date();
-    const inicioMes = new Date(hoy.getFullYear(), hoy.getMonth(), 1);
-    const diasMes = new Date(hoy.getFullYear(), hoy.getMonth()+1, 0).getDate();
+    let mesN = hoy.getMonth()+1, anio = hoy.getFullYear();
+    if (hoy.getDate() < diaCorte) { mesN -= 1; if (mesN===0) { mesN=12; anio-=1; } }
+    const inicioMes = new Date(anio, mesN-1, diaCorte, 0,0,0,0);
+    const finMes = new Date(anio, mesN, diaCorte, 0,0,0,0);
+    const finEfectivo = hoy<finMes ? hoy : finMes;
+    const diasTranscurridos = Math.max(0.0001, (finEfectivo-inicioMes)/86400000);
     let totalPct = 0;
     eqsCliente.forEach(eq=>{
-      const diasInop = (eq.historialEstado||[]).filter(h=>{
-        const d=new Date(h.fecha);
-        return d>=inicioMes && d<=hoy && h.estado!=="operativo";
-      }).length;
-      totalPct += Math.max(0, ((diasMes-diasInop)/diasMes)*100);
+      const { diasInoperativo } = reconstruirDiasEstado(eq.historialEstado, eq.estado, inicioMes, finEfectivo);
+      const diasInop = Math.min(diasInoperativo, diasTranscurridos);
+      totalPct += Math.max(0, ((diasTranscurridos-diasInop)/diasTranscurridos)*100);
     });
     return { ...c, pct: Math.round(totalPct/eqsCliente.length) };
   }).sort((a,b)=>b.pct-a.pct);
@@ -734,6 +760,24 @@ function PerfilEquipo({ equipoId, onVolver, setModulo }) {
       </Card>:null;
     })()}
 
+    {(()=>{
+      const desde = eq.fechaIngreso ? new Date(eq.fechaIngreso) : (eq.historialEstado&&eq.historialEstado.length ? new Date(eq.historialEstado[0].fecha) : new Date());
+      const { diasOperativo, diasInoperativo } = reconstruirDiasEstado(eq.historialEstado, eq.estado, desde, new Date());
+      return <Card style={{marginBottom:16}}>
+        <SecLabel>Días acumulados (desde el ingreso)</SecLabel>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginTop:10}}>
+          <div style={{textAlign:"center",padding:"10px",background:"#070d1a",borderRadius:8}}>
+            <div style={{fontFamily:"Syne,sans-serif",fontWeight:800,fontSize:22,color:"#22c55e"}}>{Math.round(diasOperativo)}</div>
+            <div style={{fontFamily:"DM Sans,sans-serif",fontSize:11,color:"#64748b",textTransform:"uppercase"}}>Días operativo</div>
+          </div>
+          <div style={{textAlign:"center",padding:"10px",background:"#070d1a",borderRadius:8}}>
+            <div style={{fontFamily:"Syne,sans-serif",fontWeight:800,fontSize:22,color:"#ef4444"}}>{Math.round(diasInoperativo)}</div>
+            <div style={{fontFamily:"DM Sans,sans-serif",fontSize:11,color:"#64748b",textTransform:"uppercase"}}>Días inoperativo</div>
+          </div>
+        </div>
+      </Card>;
+    })()}
+
     <Card style={{marginBottom:16}}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
         <SecLabel>Cambiar estado</SecLabel>
@@ -848,7 +892,7 @@ function Clientes({ setModulo }) {
     <PageHeader title="Clientes" sub={`${clientes.length} clientes`} onBack={()=>setModulo("dashboard")}
       action={<div style={{display:"flex",gap:8}}>
         {esAdmin&&<Btn variant="secondary" onClick={()=>setGestorEtiq(true)}>⚙ Etiquetas</Btn>}
-        {esAdmin&&<Btn onClick={()=>setForm({nombre:"",contacto:"",correo:"",telefono:"",direccion:"",observaciones:"",etiqueta:etiquetasCliente[0]||""})}>+ Nuevo cliente</Btn>}
+        {esAdmin&&<Btn onClick={()=>setForm({nombre:"",contacto:"",correo:"",telefono:"",direccion:"",observaciones:"",etiqueta:etiquetasCliente[0]||"",diaCorteMes:1})}>+ Nuevo cliente</Btn>}
       </div>}/>
 
     <div style={{display:"flex",flexDirection:"column",gap:10}}>
@@ -881,6 +925,10 @@ function Clientes({ setModulo }) {
         <Field label="Nombre"><Input value={form.nombre} onChange={e=>setForm(p=>({...p,nombre:e.target.value}))} placeholder="Empresa o persona"/></Field>
         <Field label="Etiqueta / Tipo">
           <Sel value={form.etiqueta||""} onChange={e=>setForm(p=>({...p,etiqueta:e.target.value}))} options={[{v:"",l:"— Sin etiqueta —"},...etiquetasCliente.map(et=>({v:et,l:et}))]}/>
+        </Field>
+        <Field label="Día de corte del mes" half>
+          <Input value={form.diaCorteMes||1} onChange={e=>setForm(p=>({...p,diaCorteMes:Math.min(31,Math.max(1,Number(e.target.value)||1))}))} type="number" placeholder="1"/>
+          <span style={{fontFamily:"DM Sans,sans-serif",fontSize:11,color:"#475569",marginTop:2}}>Ej: 20 = el mes se cuenta del 20 al 19 del mes siguiente. Dejar en 1 para mes calendario normal.</span>
         </Field>
         <Field label="Contacto"><Input value={form.contacto} onChange={e=>setForm(p=>({...p,contacto:e.target.value}))}/></Field>
         <Field label="Correo" half><Input value={form.correo} onChange={e=>setForm(p=>({...p,correo:e.target.value}))} type="email"/></Field>
@@ -937,27 +985,22 @@ function Operatividad({ setModulo }) {
   function calcOpCliente(cliente) {
     const eqsCli = equipos.filter(e=>e.clienteId===cliente.id && e.tipo!=="Batería" && e.tipo!=="Cargador");
     if (!eqsCli.length) return { pct:100, equipos:[] };
+    const diaCorte = Math.min(31, Math.max(1, cliente.diaCorteMes || 1));
     const [anio,mesN]=mes.split("-").map(Number);
-    const inicioMes=new Date(anio,mesN-1,1);
-    const finMes=new Date(anio,mesN,0,23,59,59);
-    const diasMes=finMes.getDate();
+    // El período del mes seleccionado va desde el día de corte de ese mes
+    // hasta el día de corte (exclusive) del mes siguiente. Con corte=1 esto
+    // coincide con el mes calendario normal.
+    const inicioMes=new Date(anio,mesN-1,diaCorte,0,0,0,0);
+    const finMes=new Date(anio,mesN,diaCorte,0,0,0,0);
     const hoy=new Date();
-    const diasTranscurridos=Math.min(hoy.getDate(),(hoy.getFullYear()===anio&&hoy.getMonth()===mesN-1)?hoy.getDate():diasMes);
+    const finEfectivo = hoy<finMes ? hoy : finMes;
+    const diasTranscurridos = Math.max(0.0001,(finEfectivo-inicioMes)/86400000);
 
     const eqsCalc = eqsCli.map(eq=>{
-      const historial=(eq.historialEstado||[]).filter(h=>{
-        const d=new Date(h.fecha); return d>=inicioMes&&d<=finMes;
-      }).sort((a,b)=>new Date(a.fecha)-new Date(b.fecha));
-
-      // contar días inoperativo
-      let diasInop=0;
-      let estadoActual=eq.estado;
-      // reconstruir simple: si algún momento fue inoperativo
-      historial.forEach(h=>{ if(h.estado!=="operativo") diasInop++; });
-      // ajustar al máximo días transcurridos
-      diasInop=Math.min(diasInop,diasTranscurridos);
+      const { diasInoperativo } = reconstruirDiasEstado(eq.historialEstado, eq.estado, inicioMes, finEfectivo);
+      const diasInop = Math.min(diasInoperativo, diasTranscurridos);
       const pct=Math.max(0,Math.round(((diasTranscurridos-diasInop)/diasTranscurridos)*100));
-      return { ...eq, diasInop, pct, estado:estadoActual };
+      return { ...eq, diasInop: Math.round(diasInop*10)/10, pct };
     });
 
     const pctGlobal=Math.round(eqsCalc.reduce((s,e)=>s+e.pct,0)/eqsCalc.length);
@@ -1286,12 +1329,22 @@ export default function App() {
       if (data && data.data) {
         const s = data.data;
         if (s.clientes) setClientes(s.clientes);
-        if (s.equipos) setEquipos(s.equipos);
+        if (s.equipos) {
+          // Migracion: "esperando_repuestos" dejo de ser un estado exclusivo y paso a
+          // ser una etiqueta independiente (esperandoRepuestos). Convertimos datos viejos.
+          const equiposMigrados = s.equipos.map(eq => {
+            if (eq.estado === "esperando_repuestos") {
+              return { ...eq, estado: "operativo", esperandoRepuestos: true };
+            }
+            return eq;
+          });
+          setEquipos(equiposMigrados);
+        }
         if (s.ordenesTrabajos) setOrdenesTrabajo(s.ordenesTrabajos);
         if (s.log) setLog(s.log);
         if (s.tiposEquipo) setTiposEquipo(s.tiposEquipo);
         if (s.modelosPorTipo) setModelosPorTipo(s.modelosPorTipo);
-        if (s.estadosEquipo) setEstadosEquipo(s.estadosEquipo);
+        if (s.estadosEquipo) setEstadosEquipo(s.estadosEquipo.filter(e => e.id !== "esperando_repuestos"));
         if (s.notificaciones) setNotificaciones(s.notificaciones);
         if (s.etiquetasCliente) setEtiquetasCliente(s.etiquetasCliente);
       }
