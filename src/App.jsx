@@ -1399,7 +1399,23 @@ export default function App() {
   }, [clientes, equipos, ordenesTrabajos, log, tiposEquipo, modelosPorTipo, estadosEquipo, notificaciones, etiquetasCliente, loaded]);
 
   function addLog(accion,detalle=""){setLog(prev=>[...prev,{id:uid(),usuarioId:user?.id,accion,detalle,fecha:new Date().toISOString()}]);}
-  async function handleLogout(){addLog("Logout");if(supabase)await supabase.auth.signOut();setUser(null);}
+  async function guardarEstadoAhora(){
+    if(!supabase) return;
+    const { error } = await supabase.from(STATE_TABLE).upsert({
+      id: STATE_ROW_ID,
+      data: { clientes, equipos, ordenesTrabajos, log, tiposEquipo, modelosPorTipo, estadosEquipo, notificaciones, etiquetasCliente },
+      updated_at: new Date().toISOString(),
+    });
+    if(error) console.error("Error guardando en Supabase:", error);
+  }
+  async function handleLogout(){
+    // Guardar de una vez antes de cerrar sesión, para no perder cambios recientes
+    // que todavía no llegaron a guardarse por el pequeño retraso normal del autoguardado.
+    await guardarEstadoAhora();
+    addLog("Logout");
+    if(supabase) await supabase.auth.signOut();
+    setUser(null);
+  }
 
   const otCount = ordenesTrabajos.filter(o=>o.estado==="abierta"&&(user?.rol==="admin"||o.tecnicoId===user?.id)).length;
   const notifCount = user?(notificaciones[user.id]||[]).filter(n=>!n.visto).length:0;
