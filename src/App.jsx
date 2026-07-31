@@ -422,35 +422,46 @@ function Dashboard({ setModulo }) {
               <div style={{ fontFamily:"DM Sans,sans-serif", fontSize:10, color:"#64748b", textTransform:"uppercase" }}>Inoperativos</div>
             </div>
           </div>
-          {/* Mini operatividad */}
-          {opClientes.length>0&&<div onClick={()=>setModulo("operatividad")} style={{ background:"#0d1525", border:"1px solid #1e293b", borderRadius:10, padding:"8px 14px", cursor:"pointer", minWidth:160 }}>
-            <div style={{ fontFamily:"DM Sans,sans-serif", fontSize:10, color:"#f97316", fontWeight:700, textTransform:"uppercase", marginBottom:4 }}>Operatividad</div>
-            {opClientes.slice(0,3).map(c=>(
-              <div key={c.id} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:2 }}>
-                <span style={{ fontFamily:"DM Sans,sans-serif", fontSize:11, color:"#94a3b8" }}>{c.nombre.substring(0,14)}{c.nombre.length>14?"…":""}</span>
-                <span style={{ fontFamily:"Syne,sans-serif", fontSize:12, fontWeight:800, color:c.pct>=90?"#22c55e":c.pct>=70?"#f59e0b":"#ef4444" }}>{c.pct}%</span>
-              </div>
-            ))}
-          </div>}
         </div>
       </div>
+
+      {/* Operatividad de clientes de alquiler: franja horizontal, se ven todos */}
+      {opClientes.length>0&&<div style={{ marginBottom:16, flexShrink:0 }}>
+        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:8 }}>
+          <span style={{ fontFamily:"DM Sans,sans-serif", fontSize:11, color:"#f97316", fontWeight:700, textTransform:"uppercase" }}>Operatividad (clientes de alquiler)</span>
+          <button onClick={()=>setModulo("operatividad")} style={{ background:"none", border:"none", color:"#64748b", cursor:"pointer", fontSize:11, fontFamily:"DM Sans,sans-serif" }}>Ver todo →</button>
+        </div>
+        <div style={{ display:"flex", gap:10, overflowX:"auto", paddingBottom:4 }}>
+          {opClientes.map(c=>(
+            <div key={c.id} onClick={()=>setModulo("operatividad")} style={{ background:"#0d1525", border:"1px solid #1e293b", borderRadius:10, padding:"8px 14px", cursor:"pointer", flexShrink:0, minWidth:140 }}>
+              <div style={{ fontFamily:"DM Sans,sans-serif", fontSize:12, color:"#e2e8f0", fontWeight:600, whiteSpace:"nowrap", marginBottom:4 }}>{c.nombre}</div>
+              <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+                <div style={{ background:"#1e293b", borderRadius:6, height:6, width:60, overflow:"hidden" }}>
+                  <div style={{ background:c.pct>=90?"#22c55e":c.pct>=70?"#f59e0b":"#ef4444", height:"100%", width:`${c.pct}%`, borderRadius:6 }}/>
+                </div>
+                <span style={{ fontFamily:"Syne,sans-serif", fontSize:14, fontWeight:800, color:c.pct>=90?"#22c55e":c.pct>=70?"#f59e0b":"#ef4444" }}>{c.pct}%</span>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>}
 
       {/* COLUMNAS OT */}
       <div ref={scrollRef} style={{ display:"grid", gridTemplateColumns:`${columnaHover===null?"1fr":columnaHover==="recientes"?"2.6fr":"0.7fr"} ${columnaHover===null?"1fr":columnaHover==="masDe7"?"2.6fr":"0.7fr"} ${columnaHover===null?"1fr":columnaHover==="masDeUnMes"?"2.6fr":"0.7fr"}`, gap:16, flex:1, overflowY:"auto", paddingBottom:8, transition:"grid-template-columns 0.25s ease" }}>
         {/* Recientes < 7 dias */}
-        <div onMouseEnter={()=>setColumnaHover("recientes")} onMouseLeave={()=>setColumnaHover(null)} style={{ overflow:"hidden" }}>
+        <div onMouseEnter={()=>setColumnaHover("recientes")} onMouseLeave={()=>setColumnaHover(null)}>
           <ColHeader label="Recientes" count={otRecientes.length} color="#22c55e"/>
           {otRecientes.length===0&&<div style={{ fontFamily:"DM Sans,sans-serif", color:"#334155", fontSize:13, textAlign:"center", padding:"20px 0" }}>Sin OT recientes</div>}
           {otRecientes.map(ot=><OTCard key={ot.id} ot={ot} accentColor="#22c55e"/>)}
         </div>
         {/* Mas de 7 dias */}
-        <div onMouseEnter={()=>setColumnaHover("masDe7")} onMouseLeave={()=>setColumnaHover(null)} style={{ overflow:"hidden" }}>
+        <div onMouseEnter={()=>setColumnaHover("masDe7")} onMouseLeave={()=>setColumnaHover(null)}>
           <ColHeader label="Mas de 7 dias" count={otMasDe7.length} color="#f59e0b"/>
           {otMasDe7.length===0&&<div style={{ fontFamily:"DM Sans,sans-serif", color:"#334155", fontSize:13, textAlign:"center", padding:"20px 0" }}>Sin OT en este rango</div>}
           {otMasDe7.map(ot=><OTCard key={ot.id} ot={ot} accentColor="#f59e0b"/>)}
         </div>
         {/* Mas de 1 mes */}
-        <div onMouseEnter={()=>setColumnaHover("masDeUnMes")} onMouseLeave={()=>setColumnaHover(null)} style={{ overflow:"hidden" }}>
+        <div onMouseEnter={()=>setColumnaHover("masDeUnMes")} onMouseLeave={()=>setColumnaHover(null)}>
           <ColHeader label="Mas de 1 mes" count={otMasDeUnMes.length} color="#ef4444"/>
           {otMasDeUnMes.length===0&&<div style={{ fontFamily:"DM Sans,sans-serif", color:"#334155", fontSize:13, textAlign:"center", padding:"20px 0" }}>Sin OT en este rango</div>}
           {otMasDeUnMes.map(ot=><OTCard key={ot.id} ot={ot} accentColor="#ef4444"/>)}
