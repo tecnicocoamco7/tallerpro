@@ -228,6 +228,13 @@ function OTDetalle({ ot, onClose }) {
     setNuevoComentario("");
   }
 
+  function eliminarComentario(comentarioId) {
+    if (!window.confirm("¿Eliminar este comentario?")) return;
+    const actualizada = {...ot, comentarios: comentarios.filter(c=>c.id!==comentarioId)};
+    setOrdenesTrabajo(ordenesTrabajos.map(o=>o.id===ot.id?actualizada:o));
+    addLog(`Eliminó un comentario en OT "${ot.titulo}"`);
+  }
+
   function guardarEdicion(data) {
     setOrdenesTrabajo(ordenesTrabajos.map(o=>o.id===ot.id?{...o,...data,comentarios:ot.comentarios}:o));
     addLog(`Editó OT: ${data.titulo}`);
@@ -278,7 +285,10 @@ function OTDetalle({ ot, onClose }) {
         {comentarios.length===0 && <div style={{ fontFamily:"DM Sans,sans-serif", color:"#475569", fontSize:13, marginBottom:12 }}>Sin comentarios aún.</div>}
         {comentarios.map(c=>(
           <div key={c.id} style={{ marginBottom:10, padding:"10px 12px", background:"#070d1a", borderRadius:8, borderLeft:"3px solid #f97316" }}>
-            <div style={{ fontFamily:"DM Sans,sans-serif", fontWeight:600, color:"#f97316", fontSize:11, marginBottom:4 }}>{c.autor} · {fmtDT(c.fecha)}</div>
+            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", gap:8, marginBottom:4 }}>
+              <div style={{ fontFamily:"DM Sans,sans-serif", fontWeight:600, color:"#f97316", fontSize:11 }}>{c.autor} · {fmtDT(c.fecha)}</div>
+              {(esAdmin || c.autor===user.nombre) && <button onClick={()=>eliminarComentario(c.id)} style={{ background:"none", border:"none", color:"#ef4444", cursor:"pointer", fontSize:13, padding:0, flexShrink:0 }}>🗑</button>}
+            </div>
             <div style={{ fontFamily:"DM Sans,sans-serif", color:"#e2e8f0", fontSize:13, lineHeight:1.6 }}>{c.texto}</div>
           </div>
         ))}
@@ -295,6 +305,7 @@ function OTDetalle({ ot, onClose }) {
 function Dashboard({ setModulo }) {
   const { equipos, clientes, ordenesTrabajos, setOrdenesTrabajo, estadosEquipo, user, etiquetasCliente } = useApp();
   const [verOT,       setVerOT]       = useState(null);
+  const [columnaHover, setColumnaHover] = useState(null);
   const [autoScroll,  setAutoScroll]  = useState(false);
   const scrollRef   = useRef(null);
   const timerRef    = useRef(null);
@@ -357,17 +368,20 @@ function Dashboard({ setModulo }) {
     return (
       <div onClick={()=>setVerOT(ot)} style={{ background:"#0d1525", border:`1px solid ${accentColor}44`, borderLeft:`4px solid ${accentColor}`, borderRadius:12, padding:"14px 16px", cursor:"pointer", marginBottom:10, transition:"all 0.15s" }}
         onMouseEnter={el=>el.currentTarget.style.background="#111827"} onMouseLeave={el=>el.currentTarget.style.background="#0d1525"}>
-        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:6 }}>
+        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:8 }}>
           <div style={{ fontFamily:"Syne,sans-serif", fontWeight:700, color:"#f1f5f9", fontSize:14, flex:1, marginRight:8 }}>{ot.titulo}</div>
           <Badge color={pri?.color||"#64748b"} sm>{pri?.label}</Badge>
         </div>
+        {(cli||eq)&&<div style={{ display:"flex", flexWrap:"wrap", gap:"4px 14px", alignItems:"center", marginBottom:8, padding:"6px 10px", background:"#070d1a", borderRadius:8 }}>
+          {cli&&<span style={{ fontFamily:"Syne,sans-serif", fontWeight:800, color:"#f1f5f9", fontSize:15 }}>👤 {cli.nombre}</span>}
+          {eq&&<span style={{ fontFamily:"Syne,sans-serif", fontWeight:800, color:"#f97316", fontSize:15 }}>🔧 {eq.serie}</span>}
+        </div>}
         <div style={{ fontFamily:"DM Sans,sans-serif", color:"#64748b", fontSize:12, display:"flex", flexWrap:"wrap", gap:"2px 10px" }}>
-          {eq&&<span>🔧 {eq.marca} {eq.modelo} — <span style={{color:"#f97316"}}>{eq.serie}</span></span>}
-          {cli&&<span>👤 {cli.nombre}</span>}
+          {eq&&<span>{eq.marca} {eq.modelo}</span>}
           {tec&&<span>🛠 {tec.nombre}</span>}
           <span style={{color:accentColor}}>📅 {dias} día{dias!==1?"s":""}</span>
         </div>
-        {ot.descripcion&&<div style={{ fontFamily:"DM Sans,sans-serif", color:"#475569", fontSize:11, marginTop:6 }}>{ot.descripcion.substring(0,80)}{ot.descripcion.length>80?"…":""}</div>}
+        {ot.descripcion&&<div style={{ fontFamily:"DM Sans,sans-serif", color:"#e2e8f0", fontSize:12, marginTop:8 }}>{ot.descripcion.substring(0,80)}{ot.descripcion.length>80?"…":""}</div>}
       </div>
     );
   };
@@ -422,22 +436,22 @@ function Dashboard({ setModulo }) {
       </div>
 
       {/* COLUMNAS OT */}
-      <div ref={scrollRef} style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:16, flex:1, overflowY:"auto", paddingBottom:8 }}>
-        {/* Recientes < 7 días */}
-        <div>
+      <div ref={scrollRef} style={{ display:"grid", gridTemplateColumns:`${columnaHover===null?"1fr":columnaHover==="recientes"?"2.6fr":"0.7fr"} ${columnaHover===null?"1fr":columnaHover==="masDe7"?"2.6fr":"0.7fr"} ${columnaHover===null?"1fr":columnaHover==="masDeUnMes"?"2.6fr":"0.7fr"}`, gap:16, flex:1, overflowY:"auto", paddingBottom:8, transition:"grid-template-columns 0.25s ease" }}>
+        {/* Recientes < 7 dias */}
+        <div onMouseEnter={()=>setColumnaHover("recientes")} onMouseLeave={()=>setColumnaHover(null)} style={{ overflow:"hidden" }}>
           <ColHeader label="Recientes" count={otRecientes.length} color="#22c55e"/>
           {otRecientes.length===0&&<div style={{ fontFamily:"DM Sans,sans-serif", color:"#334155", fontSize:13, textAlign:"center", padding:"20px 0" }}>Sin OT recientes</div>}
           {otRecientes.map(ot=><OTCard key={ot.id} ot={ot} accentColor="#22c55e"/>)}
         </div>
-        {/* Más de 7 días */}
-        <div>
-          <ColHeader label="Más de 7 días" count={otMasDe7.length} color="#f59e0b"/>
+        {/* Mas de 7 dias */}
+        <div onMouseEnter={()=>setColumnaHover("masDe7")} onMouseLeave={()=>setColumnaHover(null)} style={{ overflow:"hidden" }}>
+          <ColHeader label="Mas de 7 dias" count={otMasDe7.length} color="#f59e0b"/>
           {otMasDe7.length===0&&<div style={{ fontFamily:"DM Sans,sans-serif", color:"#334155", fontSize:13, textAlign:"center", padding:"20px 0" }}>Sin OT en este rango</div>}
           {otMasDe7.map(ot=><OTCard key={ot.id} ot={ot} accentColor="#f59e0b"/>)}
         </div>
-        {/* Más de 1 mes */}
-        <div>
-          <ColHeader label="Más de 1 mes" count={otMasDeUnMes.length} color="#ef4444"/>
+        {/* Mas de 1 mes */}
+        <div onMouseEnter={()=>setColumnaHover("masDeUnMes")} onMouseLeave={()=>setColumnaHover(null)} style={{ overflow:"hidden" }}>
+          <ColHeader label="Mas de 1 mes" count={otMasDeUnMes.length} color="#ef4444"/>
           {otMasDeUnMes.length===0&&<div style={{ fontFamily:"DM Sans,sans-serif", color:"#334155", fontSize:13, textAlign:"center", padding:"20px 0" }}>Sin OT en este rango</div>}
           {otMasDeUnMes.map(ot=><OTCard key={ot.id} ot={ot} accentColor="#ef4444"/>)}
         </div>
