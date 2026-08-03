@@ -202,15 +202,18 @@ function OTForm({ data, equipos, clientes, usuarios, onSave, onCancel }) {
 
 // ── DETALLE OT ────────────────────────────────────────────────────────────────
 function OTDetalle({ ot, onClose }) {
-  const { equipos, clientes, usuarios, ordenesTrabajos, setOrdenesTrabajo, user, addLog, notificaciones, setNotificaciones } = useApp();
+  const { equipos, clientes, usuarios, ordenesTrabajos, setOrdenesTrabajo, user, addLog, notificaciones, setNotificaciones, marcarVistoOT } = useApp();
   const [editando,      setEditando]      = useState(false);
   const [nuevoComentario, setNuevoComentario] = useState("");
   const esAdmin = user.rol==="admin";
   const eq  = equipos.find(e=>e.id===ot.equipoId);
   const cli = clientes.find(c=>c.id===ot.clienteId);
   const tec = usuarios.find(u=>u.id===ot.tecnicoId);
+  const creador = usuarios.find(u=>u.id===ot.creadoPor);
   const pri = PRIORIDADES.find(p=>p.id===ot.prioridad);
   const comentarios = ot.comentarios||[];
+
+  useEffect(()=>{ marcarVistoOT(ot.id); }, [ot.id]);
 
   function agregarComentario() {
     if (!nuevoComentario.trim()) return;
@@ -271,7 +274,7 @@ function OTDetalle({ ot, onClose }) {
       </div>
 
       <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8, marginBottom:16 }}>
-        {[["Equipo",eq?`${eq.marca} ${eq.modelo}`:"—"],["Serie",eq?.serie||"—"],["Cliente",cli?.nombre||"—"],["Técnico",tec?.nombre||"Sin asignar"],["Abierta",fmtDT(ot.fecha)],["Cerrada",ot.fechaCierre?fmtDT(ot.fechaCierre):"—"]].map(([l,v])=>(
+        {[["Equipo",eq?`${eq.marca} ${eq.modelo}`:"—"],["Serie",eq?.serie||"—"],["Cliente",cli?.nombre||"—"],["Técnico",tec?.nombre||"Sin asignar"],["Creado por",creador?.nombre||"—"],["Abierta",fmtDT(ot.fecha)],["Cerrada",ot.fechaCierre?fmtDT(ot.fechaCierre):"—"]].map(([l,v])=>(
           <div key={l} style={{ padding:"8px 0", borderBottom:"1px solid #1e293b" }}>
             <div style={{ fontFamily:"DM Sans,sans-serif", color:"#64748b", fontSize:11, fontWeight:600, textTransform:"uppercase" }}>{l}</div>
             <div style={{ fontFamily:"DM Sans,sans-serif", color:"#e2e8f0", fontSize:13, marginTop:2 }}>{v}</div>
@@ -311,7 +314,7 @@ function OTDetalle({ ot, onClose }) {
 
 // ── DASHBOARD 16:9 ────────────────────────────────────────────────────────────
 function Dashboard({ setModulo }) {
-  const { equipos, clientes, ordenesTrabajos, setOrdenesTrabajo, estadosEquipo, user, etiquetasCliente } = useApp();
+  const { equipos, clientes, ordenesTrabajos, setOrdenesTrabajo, estadosEquipo, user, etiquetasCliente, vistos, marcarVistoOT, usuarios } = useApp();
   const [verOT,       setVerOT]       = useState(null);
   const [columnaHover, setColumnaHover] = useState(null);
   const [autoScroll,  setAutoScroll]  = useState(false);
@@ -372,11 +375,14 @@ function Dashboard({ setModulo }) {
     const eq=equipos.find(e=>e.id===ot.equipoId);
     const cli=clientes.find(c=>c.id===ot.clienteId);
     const tec=useApp().usuarios.find(u=>u.id===ot.tecnicoId);
+    const creador=usuarios.find(u=>u.id===ot.creadoPor);
     const pri=PRIORIDADES.find(p=>p.id===ot.prioridad);
     const dias=diasDesde(ot.fecha);
+    const esNuevo = !vistos[user.id]?.ordenes?.[ot.id];
     return (
-      <div onClick={()=>setVerOT(ot)} style={{ background:"#0d1525", border:`1px solid ${accentColor}44`, borderLeft:`4px solid ${accentColor}`, borderRadius:12, padding:"14px 16px", cursor:"pointer", marginBottom:10, transition:"all 0.15s" }}
+      <div onClick={()=>{marcarVistoOT(ot.id);setVerOT(ot);}} style={{ background:"#0d1525", border:`1px solid ${accentColor}44`, borderLeft:`4px solid ${accentColor}`, borderRadius:12, padding:"14px 16px", cursor:"pointer", marginBottom:10, transition:"all 0.15s", position:"relative" }}
         onMouseEnter={el=>el.currentTarget.style.background="#111827"} onMouseLeave={el=>el.currentTarget.style.background="#0d1525"}>
+        {esNuevo&&<span title="Nuevo" style={{position:"absolute",top:10,right:10,width:9,height:9,borderRadius:"50%",background:"#ef4444",boxShadow:"0 0 0 3px #ef444433"}}/>}
         <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:8 }}>
           <div style={{ fontFamily:"Syne,sans-serif", fontWeight:700, color:"#f1f5f9", fontSize:14, flex:1, marginRight:8 }}>{ot.titulo}</div>
           <Badge color={pri?.color||"#64748b"} sm>{pri?.label}</Badge>
@@ -388,6 +394,7 @@ function Dashboard({ setModulo }) {
         <div style={{ fontFamily:"DM Sans,sans-serif", color:"#64748b", fontSize:12, display:"flex", flexWrap:"wrap", gap:"2px 10px" }}>
           {eq&&<span>{eq.marca} {eq.modelo}</span>}
           {tec&&<span>🛠 {tec.nombre}</span>}
+          {creador&&<span>✍️ {creador.nombre}</span>}
           <span style={{color:accentColor}}>📅 {fmt(ot.fecha)} · hace {dias} día{dias!==1?"s":""}</span>
         </div>
         {ot.descripcion&&<div style={{ fontFamily:"DM Sans,sans-serif", color:"#e2e8f0", fontSize:12, marginTop:8 }}>{ot.descripcion.substring(0,80)}{ot.descripcion.length>80?"…":""}</div>}
@@ -486,7 +493,7 @@ function Dashboard({ setModulo }) {
 
 // ── ÓRDENES DE TRABAJO ────────────────────────────────────────────────────────
 function OrdenesTrabajo({ setModulo }) {
-  const { ordenesTrabajos, setOrdenesTrabajo, equipos, clientes, usuarios, user, addLog, notificaciones, setNotificaciones } = useApp();
+  const { ordenesTrabajos, setOrdenesTrabajo, equipos, clientes, usuarios, user, addLog, notificaciones, setNotificaciones, vistos, marcarVistoOT } = useApp();
   const [form,         setForm]         = useState(null);
   const [verOT,        setVerOT]        = useState(null);
   const [filtroEstado, setFiltroEstado] = useState("abiertas");
@@ -563,7 +570,10 @@ function OrdenesTrabajo({ setModulo }) {
           const pri=PRIORIDADES.find(p=>p.id===ot.prioridad);
           const dias=diasDesde(ot.fecha);
           const notifNoVista=(notificaciones[user.id]||[]).some(n=>n.referenciaId===ot.id&&!n.visto);
-          return <Card key={ot.id} style={{cursor:"pointer",borderLeft:`4px solid ${pri?.color||"#f97316"}`}} onClick={()=>{setVerOT(ot.id);marcarVista(ot.id);}}>
+          const creador=usuarios.find(u=>u.id===ot.creadoPor);
+          const esNuevo = !vistos[user.id]?.ordenes?.[ot.id];
+          return <Card key={ot.id} style={{cursor:"pointer",borderLeft:`4px solid ${pri?.color||"#f97316"}`,position:"relative"}} onClick={()=>{setVerOT(ot.id);marcarVista(ot.id);marcarVistoOT(ot.id);}}>
+            {esNuevo&&<span title="Nuevo" style={{position:"absolute",top:10,right:10,width:9,height:9,borderRadius:"50%",background:"#ef4444",boxShadow:"0 0 0 3px #ef444433"}}/>}
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
               <div style={{flex:1}}>
                 <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4,flexWrap:"wrap"}}>
@@ -577,6 +587,7 @@ function OrdenesTrabajo({ setModulo }) {
                   {eq&&<span>🔧 {eq.marca} {eq.modelo} — {eq.serie}</span>}
                   {cli&&<span>👤 {cli.nombre}</span>}
                   {tec&&<span>🛠 {tec.nombre}</span>}
+                  {creador&&<span>✍️ {creador.nombre}</span>}
                   <span>📅 {fmt(ot.fecha)}</span>
                   <span>💬 {(ot.comentarios||[]).length} comentarios</span>
                 </div>
@@ -596,7 +607,7 @@ function OrdenesTrabajo({ setModulo }) {
 
 // ── EQUIPOS ───────────────────────────────────────────────────────────────────
 function Equipos({ setModulo }) {
-  const { equipos, setEquipos, clientes, estadosEquipo, setEstadosEquipo, tiposEquipo, setTiposEquipo, modelosPorTipo, setModelosPorTipo, user, addLog } = useApp();
+  const { equipos, setEquipos, clientes, estadosEquipo, setEstadosEquipo, tiposEquipo, setTiposEquipo, modelosPorTipo, setModelosPorTipo, user, addLog, vistos } = useApp();
   const [perfilId,    setPerfilId]    = useState(null);
   const [form,        setForm]        = useState(null);
   const [gestorTipos, setGestorTipos] = useState(false);
@@ -701,7 +712,9 @@ function Equipos({ setModulo }) {
         {filtrados.map(eq=>{
           const cli=clientes.find(c=>c.id===eq.clienteId);
           const est=estadosEquipo.find(e=>e.id===eq.estado)||{color:"#64748b",label:eq.estado};
-          return <Card key={eq.id} style={{cursor:"pointer",borderLeft:`4px solid ${est.color}`}} onClick={()=>setPerfilId(eq.id)}>
+          const esNuevo = !vistos[user.id]?.equipos?.[eq.id];
+          return <Card key={eq.id} style={{cursor:"pointer",borderLeft:`4px solid ${est.color}`,position:"relative"}} onClick={()=>setPerfilId(eq.id)}>
+            {esNuevo&&<span title="Nuevo" style={{position:"absolute",top:10,right:10,width:9,height:9,borderRadius:"50%",background:"#ef4444",boxShadow:"0 0 0 3px #ef444433"}}/>}
             <div style={{display:"flex",justifyContent:"space-between",marginBottom:6,gap:6,flexWrap:"wrap"}}>
               <span style={{fontFamily:"DM Sans,sans-serif",fontWeight:700,color:"#f97316",fontSize:11,textTransform:"uppercase"}}>{eq.tipo}</span>
               <div style={{display:"flex",gap:6,flexWrap:"wrap",justifyContent:"flex-end"}}>
@@ -735,13 +748,14 @@ function Equipos({ setModulo }) {
 }
 
 function PerfilEquipo({ equipoId, onVolver, setModulo }) {
-  const { equipos, setEquipos, clientes, estadosEquipo, setEstadosEquipo, tiposEquipo, modelosPorTipo, setModelosPorTipo, ordenesTrabajos, setOrdenesTrabajo, user, addLog, notificaciones, setNotificaciones, usuarios } = useApp();
+  const { equipos, setEquipos, clientes, estadosEquipo, setEstadosEquipo, tiposEquipo, modelosPorTipo, setModelosPorTipo, ordenesTrabajos, setOrdenesTrabajo, user, addLog, notificaciones, setNotificaciones, usuarios, marcarVistoEquipo } = useApp();
   const [formEditar, setFormEditar] = useState(null);
   const [gestorEst,  setGestorEst]  = useState(false);
   const [formOT,     setFormOT]     = useState(null);
   const [verOT,      setVerOT]      = useState(null);
   const esAdmin = user.rol==="admin";
   const eq = equipos.find(e=>e.id===equipoId);
+  useEffect(()=>{ marcarVistoEquipo(equipoId); }, [equipoId]);
   if (!eq) return null;
   const cliente = clientes.find(c=>c.id===eq.clienteId);
   const est = estadosEquipo.find(e=>e.id===eq.estado)||{label:eq.estado,color:"#64748b"};
@@ -1382,6 +1396,7 @@ export default function App() {
   const [estadosEquipo,    setEstadosEquipo]    = useState(ESTADOS_SEED);
   const [notificaciones,   setNotificaciones]   = useState(S_NOTIF);
   const [etiquetasCliente, setEtiquetasCliente] = useState(S_ETIQUETAS_CLIENTE);
+  const [vistos,           setVistos]           = useState({});
   const [menuOpen,         setMenuOpen]         = useState(false);
 
   const [loaded, setLoaded] = useState(!supabase);
@@ -1455,6 +1470,7 @@ export default function App() {
         if (s.estadosEquipo) setEstadosEquipo(s.estadosEquipo.filter(e => e.id !== "esperando_repuestos"));
         if (s.notificaciones) setNotificaciones(s.notificaciones);
         if (s.etiquetasCliente) setEtiquetasCliente(s.etiquetasCliente);
+        if (s.vistos) setVistos(s.vistos);
       }
       hydrating.current = false;
       hydratedConUsuario.current = true;
@@ -1467,19 +1483,35 @@ export default function App() {
     const t = setTimeout(() => {
       supabase.from(STATE_TABLE).upsert({
         id: STATE_ROW_ID,
-        data: { clientes, equipos, ordenesTrabajos, log, tiposEquipo, modelosPorTipo, estadosEquipo, notificaciones, etiquetasCliente },
+        data: { clientes, equipos, ordenesTrabajos, log, tiposEquipo, modelosPorTipo, estadosEquipo, notificaciones, etiquetasCliente, vistos },
         updated_at: new Date().toISOString(),
       }).then(({ error }) => { if (error) console.error("Error guardando en Supabase:", error); });
     }, 600);
     return () => clearTimeout(t);
-  }, [clientes, equipos, ordenesTrabajos, log, tiposEquipo, modelosPorTipo, estadosEquipo, notificaciones, etiquetasCliente, loaded]);
+  }, [clientes, equipos, ordenesTrabajos, log, tiposEquipo, modelosPorTipo, estadosEquipo, notificaciones, etiquetasCliente, vistos, loaded]);
 
   function addLog(accion,detalle=""){setLog(prev=>[...prev,{id:uid(),usuarioId:user?.id,accion,detalle,fecha:new Date().toISOString()}]);}
+  function marcarVistoEquipo(equipoId){
+    if(!user) return;
+    setVistos(prev=>{
+      const actual = prev[user.id]||{equipos:{},ordenes:{}};
+      if(actual.equipos?.[equipoId]) return prev;
+      return {...prev,[user.id]:{...actual, equipos:{...(actual.equipos||{}),[equipoId]:true}}};
+    });
+  }
+  function marcarVistoOT(otId){
+    if(!user) return;
+    setVistos(prev=>{
+      const actual = prev[user.id]||{equipos:{},ordenes:{}};
+      if(actual.ordenes?.[otId]) return prev;
+      return {...prev,[user.id]:{...actual, ordenes:{...(actual.ordenes||{}),[otId]:true}}};
+    });
+  }
   async function guardarEstadoAhora(){
     if(!supabase) return;
     const { error } = await supabase.from(STATE_TABLE).upsert({
       id: STATE_ROW_ID,
-      data: { clientes, equipos, ordenesTrabajos, log, tiposEquipo, modelosPorTipo, estadosEquipo, notificaciones, etiquetasCliente },
+      data: { clientes, equipos, ordenesTrabajos, log, tiposEquipo, modelosPorTipo, estadosEquipo, notificaciones, etiquetasCliente, vistos },
       updated_at: new Date().toISOString(),
     });
     if(error) console.error("Error guardando en Supabase:", error);
@@ -1500,7 +1532,7 @@ export default function App() {
   if (!user) return <Login/>;
   if (!loaded) return <div style={{display:"flex",alignItems:"center",justifyContent:"center",height:"100vh",color:"#64748b",fontFamily:"DM Sans,sans-serif",background:"#070d1a"}}>Cargando…</div>;
 
-  const ctx = { user, usuarios, setUsuarios, clientes, setClientes, equipos, setEquipos, ordenesTrabajos, setOrdenesTrabajo, log, addLog, tiposEquipo, setTiposEquipo, modelosPorTipo, setModelosPorTipo, estadosEquipo, setEstadosEquipo, notificaciones, setNotificaciones, etiquetasCliente, setEtiquetasCliente };
+  const ctx = { user, usuarios, setUsuarios, clientes, setClientes, equipos, setEquipos, ordenesTrabajos, setOrdenesTrabajo, log, addLog, tiposEquipo, setTiposEquipo, modelosPorTipo, setModelosPorTipo, estadosEquipo, setEstadosEquipo, notificaciones, setNotificaciones, etiquetasCliente, setEtiquetasCliente, vistos, setVistos, marcarVistoEquipo, marcarVistoOT };
 
   const vista = {
     dashboard:    <Dashboard    setModulo={setModulo}/>,
