@@ -1015,6 +1015,21 @@ function ClienteDetalle({ cliente: c, onEdit }) {
   const { equipos, estadosEquipo, esAdmin, user } = useApp();
   const eqsCliente = equipos.filter(e=>e.clienteId===c.id);
   const esA = user.rol==="admin";
+
+  // Montacargas electricos con bateria Y cargador asignados: se muestran en fila (tabla).
+  const montacargasCompletos = eqsCliente.filter(eq => eq.tipo==="Montacargas" && eq.esElectrico && eq.bateriaAsignadaId && eq.cargadorAsignadoId);
+  const idsUsados = new Set();
+  const filasCompletas = montacargasCompletos.map(mtc => {
+    const bat = equipos.find(e=>e.id===mtc.bateriaAsignadaId);
+    const car = equipos.find(e=>e.id===mtc.cargadorAsignadoId);
+    idsUsados.add(mtc.id);
+    if (bat) idsUsados.add(bat.id);
+    if (car) idsUsados.add(car.id);
+    return { mtc, bat, car };
+  });
+  // El resto (montacargas sin ambos asignados, baterias/cargadores sueltos, y otros tipos de equipo) va como lista normal.
+  const eqsResto = eqsCliente.filter(eq => !idsUsados.has(eq.id));
+
   return <div>
     <div style={{display:"flex",gap:8,marginBottom:16}}>
       {c.etiqueta&&<Badge color="#f97316">{c.etiqueta}</Badge>}
@@ -1023,8 +1038,35 @@ function ClienteDetalle({ cliente: c, onEdit }) {
       {[["Contacto",c.contacto],["Correo",c.correo],["Teléfono",c.telefono],["Dirección",c.direccion],["Observaciones",c.observaciones]].map(([l,v])=>v?<div key={l} style={{display:"flex",justifyContent:"space-between",padding:"8px 0",borderBottom:"1px solid #1e293b"}}><span style={{fontFamily:"DM Sans,sans-serif",color:"#64748b",fontSize:12,fontWeight:600}}>{l}</span><span style={{fontFamily:"DM Sans,sans-serif",color:"#e2e8f0",fontSize:13,maxWidth:"60%",textAlign:"right"}}>{v}</span></div>:null)}
     </div>
     <SecLabel>Equipos asignados ({eqsCliente.length})</SecLabel>
+
+    {filasCompletas.length>0&&<div style={{marginTop:10,marginBottom:6}}>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8,padding:"0 8px 6px",fontFamily:"DM Sans,sans-serif",fontSize:10,color:"#64748b",fontWeight:700,textTransform:"uppercase"}}>
+        <span>Montacargas</span><span>Batería</span><span>Cargador</span>
+      </div>
+      {filasCompletas.map(({mtc,bat,car})=>(
+        <div key={mtc.id} style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8,padding:"10px 8px",background:"#0d1525",border:"1px solid #1e293b",borderRadius:8,marginBottom:8,alignItems:"center"}}>
+          <div>
+            <div style={{fontFamily:"DM Sans,sans-serif",fontWeight:700,color:"#f1f5f9",fontSize:13}}>{mtc.marca} {mtc.modelo}</div>
+            <div style={{fontFamily:"DM Sans,sans-serif",color:"#f97316",fontSize:11}}>{mtc.serie}</div>
+          </div>
+          <div>
+            {bat ? <>
+              <div style={{fontFamily:"DM Sans,sans-serif",fontWeight:600,color:"#e2e8f0",fontSize:13}}>{bat.marca} {bat.modelo}</div>
+              <div style={{fontFamily:"DM Sans,sans-serif",color:"#f97316",fontSize:11}}>{bat.serie}</div>
+            </> : <span style={{color:"#475569",fontSize:12}}>—</span>}
+          </div>
+          <div>
+            {car ? <>
+              <div style={{fontFamily:"DM Sans,sans-serif",fontWeight:600,color:"#e2e8f0",fontSize:13}}>{car.marca} {car.modelo}</div>
+              <div style={{fontFamily:"DM Sans,sans-serif",color:"#f97316",fontSize:11}}>{car.serie}</div>
+            </> : <span style={{color:"#475569",fontSize:12}}>—</span>}
+          </div>
+        </div>
+      ))}
+    </div>}
+
     {eqsCliente.length===0&&<EmptyState msg="Sin equipos asignados."/>}
-    {eqsCliente.map(eq=>{
+    {eqsResto.map(eq=>{
       const est=estadosEquipo.find(e=>e.id===eq.estado)||{color:"#64748b",label:eq.estado};
       return <div key={eq.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 0",borderBottom:"1px solid #1e293b"}}>
         <div>
