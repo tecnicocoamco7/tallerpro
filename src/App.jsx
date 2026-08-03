@@ -248,6 +248,13 @@ function OTDetalle({ ot, onClose }) {
     onClose();
   }
 
+  function eliminarOT() {
+    if (!window.confirm(`¿Seguro que querés eliminar la OT "${ot.titulo}"? Esta acción no se puede deshacer.`)) return;
+    setOrdenesTrabajo(ordenesTrabajos.filter(o=>o.id!==ot.id));
+    addLog(`Eliminó OT: ${ot.titulo}`);
+    onClose();
+  }
+
   if (editando) return (
     <div>
       <button onClick={()=>setEditando(false)} style={{ background:"none", border:"none", color:"#f97316", cursor:"pointer", fontFamily:"DM Sans,sans-serif", fontSize:12, fontWeight:600, marginBottom:16 }}>← Volver</button>
@@ -274,9 +281,10 @@ function OTDetalle({ ot, onClose }) {
 
       {ot.descripcion && <div style={{ marginBottom:16, padding:"12px", background:"#070d1a", borderRadius:8, fontFamily:"DM Sans,sans-serif", color:"#94a3b8", fontSize:13, lineHeight:1.6 }}>{ot.descripcion}</div>}
 
-      {esAdmin && ot.estado==="abierta" && <div style={{ display:"flex", gap:8, marginBottom:20 }}>
-        <Btn variant="secondary" sm onClick={()=>setEditando(true)}>✏️ Editar</Btn>
-        <Btn variant="success"   sm onClick={cerrarOT}>✅ Cerrar OT</Btn>
+      {esAdmin && <div style={{ display:"flex", gap:8, marginBottom:20, flexWrap:"wrap" }}>
+        {ot.estado==="abierta" && <Btn variant="secondary" sm onClick={()=>setEditando(true)}>✏️ Editar</Btn>}
+        {ot.estado==="abierta" && <Btn variant="success"   sm onClick={cerrarOT}>✅ Cerrar OT</Btn>}
+        <Btn variant="danger" sm onClick={eliminarOT}>🗑 Eliminar OT</Btn>
       </div>}
 
       {/* Comentarios */}
@@ -312,9 +320,10 @@ function Dashboard({ setModulo }) {
   const scrollTimer = useRef(null);
 
   const otAbiertas = ordenesTrabajos.filter(o=>o.estado==="abierta");
-  const otRecientes  = otAbiertas.filter(o=>diasDesde(o.fecha)<7);
-  const otMasDe7    = otAbiertas.filter(o=>diasDesde(o.fecha)>=7 && diasDesde(o.fecha)<30);
-  const otMasDeUnMes = otAbiertas.filter(o=>diasDesde(o.fecha)>=30);
+  const porFechaDesc = (a,b)=>new Date(b.fecha)-new Date(a.fecha);
+  const otRecientes  = otAbiertas.filter(o=>diasDesde(o.fecha)<7).sort(porFechaDesc);
+  const otMasDe7    = otAbiertas.filter(o=>diasDesde(o.fecha)>=7 && diasDesde(o.fecha)<30).sort(porFechaDesc);
+  const otMasDeUnMes = otAbiertas.filter(o=>diasDesde(o.fecha)>=30).sort(porFechaDesc);
 
   const totalEq      = equipos.length;
   const operativos   = equipos.filter(e=>e.estado==="operativo").length;
@@ -379,7 +388,7 @@ function Dashboard({ setModulo }) {
         <div style={{ fontFamily:"DM Sans,sans-serif", color:"#64748b", fontSize:12, display:"flex", flexWrap:"wrap", gap:"2px 10px" }}>
           {eq&&<span>{eq.marca} {eq.modelo}</span>}
           {tec&&<span>🛠 {tec.nombre}</span>}
-          <span style={{color:accentColor}}>📅 {dias} día{dias!==1?"s":""}</span>
+          <span style={{color:accentColor}}>📅 {fmt(ot.fecha)} · hace {dias} día{dias!==1?"s":""}</span>
         </div>
         {ot.descripcion&&<div style={{ fontFamily:"DM Sans,sans-serif", color:"#e2e8f0", fontSize:12, marginTop:8 }}>{ot.descripcion.substring(0,80)}{ot.descripcion.length>80?"…":""}</div>}
       </div>
