@@ -171,6 +171,7 @@ function OTForm({ data, equipos, clientes, usuarios, onSave, onCancel }) {
   const [f, setF] = useState(data);
   const set = (k,v) => setF(p=>({...p,[k]:v}));
   const tecnicos = usuarios.filter(u=>u.activo);
+  const clientesOrdenados = [...(clientes||[])].sort((a,b)=>String(a.nombre).localeCompare(String(b.nombre),"es",{sensitivity:"base"}));
   return (
     <div style={{ display:"flex", flexWrap:"wrap", gap:14 }}>
       <Field label="Título de la OT">
@@ -181,7 +182,7 @@ function OTForm({ data, equipos, clientes, usuarios, onSave, onCancel }) {
           onSelect={id=>{ set("equipoId",id); const eq=equipos.find(e=>e.id===id); if(eq){ set("clienteId",eq.clienteId); if(!f.horometro) set("horometro",eq.horometro||""); } }}/>
       </Field>
       <Field label="Cliente" half>
-        <Sel value={f.clienteId||""} onChange={e=>set("clienteId",Number(e.target.value))} options={[{v:"",l:"— Seleccionar —"},...clientes.map(c=>({v:c.id,l:c.nombre}))]}/>
+        <Sel value={f.clienteId||""} onChange={e=>set("clienteId",Number(e.target.value))} options={[{v:"",l:"— Seleccionar —"},...clientesOrdenados.map(c=>({v:c.id,l:c.nombre}))]}/>
       </Field>
       <Field label="Técnico asignado" half>
         <Sel value={f.tecnicoId||""} onChange={e=>set("tecnicoId",Number(e.target.value))} options={[{v:"",l:"— Sin asignar —"},...tecnicos.map(u=>({v:u.id,l:`${u.nombre} (${ROLES[u.rol]})`}))]}/>
@@ -619,15 +620,19 @@ function OrdenesTrabajo({ setModulo }) {
 
 // ── EQUIPOS ───────────────────────────────────────────────────────────────────
 function Equipos({ setModulo }) {
-  const { equipos, setEquipos, clientes, estadosEquipo, setEstadosEquipo, tiposEquipo, setTiposEquipo, modelosPorTipo, setModelosPorTipo, user, addLog, vistos } = useApp();
+  const { equipos, setEquipos, clientes, estadosEquipo, setEstadosEquipo, tiposEquipo, setTiposEquipo, modelosPorTipo, setModelosPorTipo, marcasPorTipo, setMarcasPorTipo, ubicaciones, setUbicaciones, user, addLog, vistos } = useApp();
   const [perfilId,    setPerfilId]    = useState(null);
   const [form,        setForm]        = useState(null);
   const [gestorTipos, setGestorTipos] = useState(false);
   const [gestorMod,   setGestorMod]   = useState(false);
+  const [gestorMarca, setGestorMarca] = useState(false);
+  const [gestorUbic,  setGestorUbic]  = useState(false);
   const [busqueda,    setBusqueda]    = useState("");
   const [filtroTipo,  setFiltroTipo]  = useState("todos");
   const [filtroEst,   setFiltroEst]   = useState("todos");
   const [filtroModelo,setFiltroModelo]= useState("todos");
+  const [filtroMarca, setFiltroMarca] = useState("todos");
+  const [filtroUbic,  setFiltroUbic]  = useState("todos");
   const esAdmin = user.rol==="admin";
 
   const totalEq      = equipos.length;
@@ -640,12 +645,14 @@ function Equipos({ setModulo }) {
 
   if (perfilId) return <PerfilEquipo equipoId={perfilId} onVolver={()=>setPerfilId(null)} setModulo={setModulo}/>;
 
-  const modelosDelTipo = filtroTipo!=="todos" ? (modelosPorTipo[filtroTipo]||[]) : [];
+  const modelosDelTipo = filtroTipo!=="todos" ? ordenAlfa(modelosPorTipo[filtroTipo]||[]) : [];
+  const marcasDelTipo = filtroTipo!=="todos" ? ordenAlfa(marcasPorTipo[filtroTipo]||[]) : [];
+  const ubicacionesOrdenadas = ordenAlfa(ubicaciones);
 
   const filtrados = equipos.filter(eq=>{
     const q=busqueda.toLowerCase();
     const ok=!busqueda||eq.serie?.toLowerCase().includes(q)||eq.marca?.toLowerCase().includes(q)||eq.modelo?.toLowerCase().includes(q)||clientes.find(c=>c.id===eq.clienteId)?.nombre?.toLowerCase().includes(q);
-    return ok&&(filtroTipo==="todos"||eq.tipo===filtroTipo)&&(filtroEst==="todos"||eq.estado===filtroEst)&&(filtroModelo==="todos"||eq.modelo===filtroModelo);
+    return ok&&(filtroTipo==="todos"||eq.tipo===filtroTipo)&&(filtroEst==="todos"||eq.estado===filtroEst)&&(filtroModelo==="todos"||eq.modelo===filtroModelo)&&(filtroMarca==="todos"||eq.marca===filtroMarca)&&(filtroUbic==="todos"||eq.ubicacion===filtroUbic);
   });
 
   function guardar(data) {
@@ -687,7 +694,7 @@ function Equipos({ setModulo }) {
 
       <div style={{display:"flex",gap:8,marginBottom:10,flexWrap:"wrap"}}>
         {["todos",...tiposEquipo].map(t=>(
-          <button key={t} onClick={()=>{setFiltroTipo(t);setFiltroModelo("todos");}}
+          <button key={t} onClick={()=>{setFiltroTipo(t);setFiltroModelo("todos");setFiltroMarca("todos");}}
             style={{padding:"4px 14px",borderRadius:20,border:`1px solid ${filtroTipo===t?"#f97316":"#1e293b"}`,background:filtroTipo===t?"#f9731622":"transparent",color:filtroTipo===t?"#f97316":"#64748b",cursor:"pointer",fontSize:12,fontFamily:"DM Sans,sans-serif",fontWeight:600}}>
             {t==="todos"?"Todos tipos":t}
           </button>
@@ -720,6 +727,42 @@ function Equipos({ setModulo }) {
         </div>
       </div>}
 
+      {filtroTipo!=="todos"&&<div style={{marginBottom:18}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+          <span style={{fontFamily:"DM Sans,sans-serif",fontSize:11,color:"#64748b",fontWeight:600,textTransform:"uppercase"}}>Marcas de {filtroTipo}</span>
+          {esAdmin&&<button onClick={()=>setGestorMarca(true)} style={{background:"none",border:"1px solid #1e293b",borderRadius:6,color:"#64748b",cursor:"pointer",padding:"3px 8px",fontSize:12}}>⚙ Marcas</button>}
+        </div>
+        <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+          {[{v:"todos",l:"Todas marcas"},...marcasDelTipo.map(m=>({v:m,l:m}))].map(f=>{
+            const cant = f.v==="todos" ? equipos.filter(e=>e.tipo===filtroTipo).length : equipos.filter(e=>e.tipo===filtroTipo&&e.marca===f.v).length;
+            return <button key={f.v} onClick={()=>setFiltroMarca(f.v)}
+              style={{display:"flex",alignItems:"center",gap:6,padding:"4px 14px",borderRadius:20,border:`1px solid ${filtroMarca===f.v?"#3b82f6":"#1e293b"}`,background:filtroMarca===f.v?"#3b82f622":"transparent",color:filtroMarca===f.v?"#3b82f6":"#64748b",cursor:"pointer",fontSize:12,fontFamily:"DM Sans,sans-serif",fontWeight:600}}>
+              {f.l}
+              <span style={{background:"#ffffff14",borderRadius:10,padding:"0px 6px",fontSize:10}}>{cant}</span>
+            </button>;
+          })}
+          {marcasDelTipo.length===0&&<span style={{fontFamily:"DM Sans,sans-serif",fontSize:12,color:"#475569"}}>Sin marcas cargadas para este tipo todavía.</span>}
+        </div>
+      </div>}
+
+      <div style={{marginBottom:18}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+          <span style={{fontFamily:"DM Sans,sans-serif",fontSize:11,color:"#64748b",fontWeight:600,textTransform:"uppercase"}}>Ubicaciones</span>
+          {esAdmin&&<button onClick={()=>setGestorUbic(true)} style={{background:"none",border:"1px solid #1e293b",borderRadius:6,color:"#64748b",cursor:"pointer",padding:"3px 8px",fontSize:12}}>⚙ Ubicaciones</button>}
+        </div>
+        <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+          {[{v:"todos",l:"Todas ubicaciones"},...ubicacionesOrdenadas.map(u=>({v:u,l:u}))].map(f=>{
+            const cant = f.v==="todos" ? equipos.length : equipos.filter(e=>e.ubicacion===f.v).length;
+            return <button key={f.v} onClick={()=>setFiltroUbic(f.v)}
+              style={{display:"flex",alignItems:"center",gap:6,padding:"4px 14px",borderRadius:20,border:`1px solid ${filtroUbic===f.v?"#22c55e":"#1e293b"}`,background:filtroUbic===f.v?"#22c55e22":"transparent",color:filtroUbic===f.v?"#22c55e":"#64748b",cursor:"pointer",fontSize:12,fontFamily:"DM Sans,sans-serif",fontWeight:600}}>
+              {f.l}
+              <span style={{background:"#ffffff14",borderRadius:10,padding:"0px 6px",fontSize:10}}>{cant}</span>
+            </button>;
+          })}
+          {ubicacionesOrdenadas.length===0&&<span style={{fontFamily:"DM Sans,sans-serif",fontSize:12,color:"#475569"}}>Sin ubicaciones cargadas todavía.</span>}
+        </div>
+      </div>
+
       <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(260px,1fr))",gap:14}}>
         {filtrados.map(eq=>{
           const cli=clientes.find(c=>c.id===eq.clienteId);
@@ -747,20 +790,26 @@ function Equipos({ setModulo }) {
       </div>
 
       {form&&<Modal title={form.id?"Editar equipo":"Nuevo equipo"} onClose={()=>setForm(null)} wide>
-        <EquipoForm data={form} equipos={equipos} clientes={clientes} tiposEquipo={tiposEquipo} estadosEquipo={estadosEquipo} modelosPorTipo={modelosPorTipo} setModelosPorTipo={setModelosPorTipo} onSave={guardar} onCancel={()=>setForm(null)}/>
+        <EquipoForm data={form} equipos={equipos} clientes={clientes} tiposEquipo={tiposEquipo} estadosEquipo={estadosEquipo} modelosPorTipo={modelosPorTipo} setModelosPorTipo={setModelosPorTipo} marcasPorTipo={marcasPorTipo} setMarcasPorTipo={setMarcasPorTipo} ubicaciones={ubicaciones} setUbicaciones={setUbicaciones} onSave={guardar} onCancel={()=>setForm(null)}/>
       </Modal>}
       {gestorTipos&&<Modal title="Gestionar tipos de equipo" onClose={()=>setGestorTipos(false)}>
         <GestorLista items={tiposEquipo} setItems={setTiposEquipo} placeholder="Nuevo tipo..." onClose={()=>setGestorTipos(false)}/>
       </Modal>}
       {gestorMod&&<Modal title={`Gestionar modelos de ${filtroTipo}`} onClose={()=>setGestorMod(false)}>
-        <GestorLista items={modelosPorTipo[filtroTipo]||[]} setItems={(nuevos)=>setModelosPorTipo(prev=>({...prev,[filtroTipo]:nuevos}))} placeholder="Nuevo modelo..." onClose={()=>setGestorMod(false)}/>
+        <GestorLista items={modelosPorTipo[filtroTipo]||[]} setItems={(nuevos)=>setModelosPorTipo(prev=>({...prev,[filtroTipo]:nuevos}))} placeholder="Nuevo modelo..." onClose={()=>setGestorMod(false)} sorted/>
+      </Modal>}
+      {gestorMarca&&<Modal title={`Gestionar marcas de ${filtroTipo}`} onClose={()=>setGestorMarca(false)}>
+        <GestorLista items={marcasPorTipo[filtroTipo]||[]} setItems={(nuevos)=>setMarcasPorTipo(prev=>({...prev,[filtroTipo]:nuevos}))} placeholder="Nueva marca..." onClose={()=>setGestorMarca(false)} sorted/>
+      </Modal>}
+      {gestorUbic&&<Modal title="Gestionar ubicaciones" onClose={()=>setGestorUbic(false)}>
+        <GestorLista items={ubicaciones} setItems={setUbicaciones} placeholder="Nueva ubicación..." onClose={()=>setGestorUbic(false)} sorted/>
       </Modal>}
     </div>
   );
 }
 
 function PerfilEquipo({ equipoId, onVolver, setModulo }) {
-  const { equipos, setEquipos, clientes, estadosEquipo, setEstadosEquipo, tiposEquipo, modelosPorTipo, setModelosPorTipo, ordenesTrabajos, setOrdenesTrabajo, user, addLog, notificaciones, setNotificaciones, usuarios, marcarVistoEquipo } = useApp();
+  const { equipos, setEquipos, clientes, estadosEquipo, setEstadosEquipo, tiposEquipo, modelosPorTipo, setModelosPorTipo, marcasPorTipo, setMarcasPorTipo, ubicaciones, setUbicaciones, ordenesTrabajos, setOrdenesTrabajo, user, addLog, notificaciones, setNotificaciones, usuarios, marcarVistoEquipo } = useApp();
   const [formEditar, setFormEditar] = useState(null);
   const [gestorEst,  setGestorEst]  = useState(false);
   const [formOT,     setFormOT]     = useState(null);
@@ -915,7 +964,7 @@ function PerfilEquipo({ equipoId, onVolver, setModulo }) {
     })}
 
     {formEditar&&<Modal title="Editar equipo" onClose={()=>setFormEditar(null)} wide>
-      <EquipoForm data={formEditar} equipos={equipos} clientes={clientes} tiposEquipo={tiposEquipo} estadosEquipo={estadosEquipo} modelosPorTipo={modelosPorTipo} setModelosPorTipo={setModelosPorTipo} onSave={d=>{setEquipos(equipos.map(e=>e.id===eq.id?{...e,...d}:e));addLog(`Editó equipo: ${eq.serie}`);setFormEditar(null);}} onCancel={()=>setFormEditar(null)}/>
+      <EquipoForm data={formEditar} equipos={equipos} clientes={clientes} tiposEquipo={tiposEquipo} estadosEquipo={estadosEquipo} modelosPorTipo={modelosPorTipo} setModelosPorTipo={setModelosPorTipo} marcasPorTipo={marcasPorTipo} setMarcasPorTipo={setMarcasPorTipo} ubicaciones={ubicaciones} setUbicaciones={setUbicaciones} onSave={d=>{setEquipos(equipos.map(e=>e.id===eq.id?{...e,...d}:e));addLog(`Editó equipo: ${eq.serie}`);setFormEditar(null);}} onCancel={()=>setFormEditar(null)}/>
     </Modal>}
     {gestorEst&&<Modal title="Gestionar estados" onClose={()=>setGestorEst(false)}><GestorEstados estados={estadosEquipo} setEstados={setEstadosEquipo} onClose={()=>setGestorEst(false)}/></Modal>}
     {formOT&&<Modal title="Nueva OT" onClose={()=>setFormOT(null)} wide><OTForm data={formOT} equipos={equipos} clientes={clientes} usuarios={usuarios} onSave={guardarOT} onCancel={()=>setFormOT(null)}/></Modal>}
@@ -923,19 +972,29 @@ function PerfilEquipo({ equipoId, onVolver, setModulo }) {
   </div>;
 }
 
-function EquipoForm({ data, equipos, clientes, tiposEquipo, estadosEquipo, modelosPorTipo, setModelosPorTipo, onSave, onCancel }) {
+function EquipoForm({ data, equipos, clientes, tiposEquipo, estadosEquipo, modelosPorTipo, setModelosPorTipo, marcasPorTipo, setMarcasPorTipo, ubicaciones, setUbicaciones, onSave, onCancel }) {
   const [f,setF]=useState(data); const set=(k,v)=>setF(p=>({...p,[k]:v}));
   const [gestorMod,setGestorMod]=useState(false);
+  const [gestorMarca,setGestorMarca]=useState(false);
+  const [gestorUbic,setGestorUbic]=useState(false);
   function setTipo(v){
-    setF(p=>({...p, tipo:v, modelo:"", ...(v!=="Montacargas"?{esElectrico:false,bateriaAsignadaId:null,cargadorAsignadoId:null}:{})}));
+    setF(p=>({...p, tipo:v, modelo:"", marca:"", ...(v!=="Montacargas"?{esElectrico:false,bateriaAsignadaId:null,cargadorAsignadoId:null}:{})}));
   }
-  const modelosDelTipo = (modelosPorTipo && modelosPorTipo[f.tipo]) || [];
+  const modelosDelTipo = ordenAlfa((modelosPorTipo && modelosPorTipo[f.tipo]) || []);
+  const marcasDelTipo = ordenAlfa((marcasPorTipo && marcasPorTipo[f.tipo]) || []);
+  const ubicacionesOrdenadas = ordenAlfa(ubicaciones||[]);
+  const clientesOrdenados = [...(clientes||[])].sort((a,b)=>String(a.nombre).localeCompare(String(b.nombre),"es",{sensitivity:"base"}));
   const otrosEquipos = (equipos||[]).filter(e=>e.id!==f.id);
   const bateriasDisponibles = otrosEquipos.filter(e=>e.tipo==="Batería");
   const cargadoresDisponibles = otrosEquipos.filter(e=>e.tipo==="Cargador");
   return <div style={{display:"flex",flexWrap:"wrap",gap:14}}>
     <Field label="Tipo"><Sel value={f.tipo} onChange={e=>setTipo(e.target.value)} options={tiposEquipo.map(t=>({v:t,l:t}))}/></Field>
-    <Field label="Marca" half><Input value={f.marca} onChange={e=>set("marca",e.target.value)} placeholder="Crown, Enersys..."/></Field>
+    <Field label="Marca" half>
+      <div style={{display:"flex",gap:6}}>
+        <div style={{flex:1}}><Sel value={f.marca||""} onChange={e=>set("marca",e.target.value)} options={[{v:"",l:"— Elegir marca —"},...marcasDelTipo.map(m=>({v:m,l:m}))]}/></div>
+        <button type="button" onClick={()=>setGestorMarca(true)} style={{background:"none",border:"1px solid #1e293b",borderRadius:6,color:"#64748b",cursor:"pointer",padding:"0 10px",fontSize:13}}>⚙</button>
+      </div>
+    </Field>
     <Field label="Modelo" half>
       <div style={{display:"flex",gap:6}}>
         <div style={{flex:1}}><Sel value={f.modelo||""} onChange={e=>set("modelo",e.target.value)} options={[{v:"",l:"— Elegir modelo —"},...modelosDelTipo.map(m=>({v:m,l:m}))]}/></div>
@@ -944,8 +1003,13 @@ function EquipoForm({ data, equipos, clientes, tiposEquipo, estadosEquipo, model
     </Field>
     <Field label="Número de serie"><Input value={f.serie} onChange={e=>set("serie",e.target.value)} placeholder="CRW-2024-001"/></Field>
     <Field label="Horómetro (h)" half><Input value={f.horometro} onChange={e=>set("horometro",e.target.value)} type="number" placeholder="Opcional"/></Field>
-    <Field label="Cliente" half><Sel value={f.clienteId||""} onChange={e=>set("clienteId",Number(e.target.value))} options={[{v:"",l:"— Sin cliente —"},...clientes.map(c=>({v:c.id,l:c.nombre}))]}/></Field>
-    <Field label="Ubicación"><Input value={f.ubicacion} onChange={e=>set("ubicacion",e.target.value)} placeholder="Taller, obra, sitio..."/></Field>
+    <Field label="Cliente" half><Sel value={f.clienteId||""} onChange={e=>set("clienteId",Number(e.target.value))} options={[{v:"",l:"— Sin cliente —"},...clientesOrdenados.map(c=>({v:c.id,l:c.nombre}))]}/></Field>
+    <Field label="Ubicación" half>
+      <div style={{display:"flex",gap:6}}>
+        <div style={{flex:1}}><Sel value={f.ubicacion||""} onChange={e=>set("ubicacion",e.target.value)} options={[{v:"",l:"— Elegir ubicación —"},...ubicacionesOrdenadas.map(u=>({v:u,l:u}))]}/></div>
+        <button type="button" onClick={()=>setGestorUbic(true)} style={{background:"none",border:"1px solid #1e293b",borderRadius:6,color:"#64748b",cursor:"pointer",padding:"0 10px",fontSize:13}}>⚙</button>
+      </div>
+    </Field>
     <Field label="Estado"><Sel value={f.estado} onChange={e=>set("estado",e.target.value)} options={estadosEquipo.map(e=>({v:e.id,l:e.label}))}/></Field>
     {f.tipo==="Montacargas"&&<div style={{width:"100%",display:"flex",flexDirection:"column",gap:10,padding:12,background:"#070d1a",border:"1px solid #1e293b",borderRadius:8}}>
       <label style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer",fontFamily:"DM Sans,sans-serif",fontSize:13,color:"#e2e8f0"}}>
@@ -960,7 +1024,13 @@ function EquipoForm({ data, equipos, clientes, tiposEquipo, estadosEquipo, model
     <Field label="Observaciones"><Input value={f.observaciones} onChange={e=>set("observaciones",e.target.value)} textarea/></Field>
     <div style={{display:"flex",gap:10,width:"100%",marginTop:4}}><Btn onClick={()=>onSave(f)}>Guardar</Btn><Btn variant="secondary" onClick={onCancel}>Cancelar</Btn></div>
     {gestorMod&&<Modal title={`Gestionar modelos de ${f.tipo}`} onClose={()=>setGestorMod(false)}>
-      <GestorLista items={modelosDelTipo} setItems={(nuevos)=>setModelosPorTipo(prev=>({...prev,[f.tipo]:nuevos}))} placeholder="Nuevo modelo..." onClose={()=>setGestorMod(false)}/>
+      <GestorLista items={(modelosPorTipo && modelosPorTipo[f.tipo]) || []} setItems={(nuevos)=>setModelosPorTipo(prev=>({...prev,[f.tipo]:nuevos}))} placeholder="Nuevo modelo..." onClose={()=>setGestorMod(false)} sorted/>
+    </Modal>}
+    {gestorMarca&&<Modal title={`Gestionar marcas de ${f.tipo}`} onClose={()=>setGestorMarca(false)}>
+      <GestorLista items={(marcasPorTipo && marcasPorTipo[f.tipo]) || []} setItems={(nuevos)=>setMarcasPorTipo(prev=>({...prev,[f.tipo]:nuevos}))} placeholder="Nueva marca..." onClose={()=>setGestorMarca(false)} sorted/>
+    </Modal>}
+    {gestorUbic&&<Modal title="Gestionar ubicaciones" onClose={()=>setGestorUbic(false)}>
+      <GestorLista items={ubicaciones||[]} setItems={setUbicaciones} placeholder="Nueva ubicación..." onClose={()=>setGestorUbic(false)} sorted/>
     </Modal>}
   </div>;
 }
@@ -972,6 +1042,7 @@ function Clientes({ setModulo }) {
   const [ver,          setVer]          = useState(null);
   const [gestorEtiq,   setGestorEtiq]   = useState(false);
   const esAdmin = user.rol==="admin";
+  const clientesOrdenados = [...clientes].sort((a,b)=>String(a.nombre).localeCompare(String(b.nombre),"es",{sensitivity:"base"}));
 
   function guardar(data){
     if(data.id){setClientes(clientes.map(c=>c.id===data.id?data:c));}
@@ -987,7 +1058,7 @@ function Clientes({ setModulo }) {
       </div>}/>
 
     <div style={{display:"flex",flexDirection:"column",gap:10}}>
-      {clientes.map(c=>{
+      {clientesOrdenados.map(c=>{
         const eqsCliente=equipos.filter(e=>e.clienteId===c.id);
         return <Card key={c.id} style={{cursor:"pointer"}} onClick={()=>setVer(c)}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
@@ -1332,13 +1403,16 @@ function LogActividad({ setModulo }) {
 }
 
 // ── GESTORES ──────────────────────────────────────────────────────────────────
-function GestorLista({ items, setItems, placeholder, onClose }) {
+function ordenAlfa(arr){ return [...arr].sort((a,b)=>String(a).localeCompare(String(b),"es",{sensitivity:"base"})); }
+
+function GestorLista({ items, setItems, placeholder, onClose, sorted }) {
   const [nuevo,setNuevo]=useState("");
   const agregar=()=>{ const t=nuevo.trim(); if(t&&!items.includes(t)){setItems([...items,t]);setNuevo("");} };
+  const mostrados = sorted ? ordenAlfa(items) : items;
   return <div>
     <div style={{display:"flex",gap:8,marginBottom:16}}><input style={{...iS,flex:1}} value={nuevo} onChange={e=>setNuevo(e.target.value)} placeholder={placeholder} onKeyDown={e=>e.key==="Enter"&&agregar()}/><Btn onClick={agregar}>Agregar</Btn></div>
     <div style={{display:"flex",flexWrap:"wrap",gap:8}}>
-      {items.map(t=><div key={t} style={{display:"flex",alignItems:"center",gap:6,background:"#070d1a",border:"1px solid #1e293b",borderRadius:8,padding:"6px 12px"}}>
+      {mostrados.map(t=><div key={t} style={{display:"flex",alignItems:"center",gap:6,background:"#070d1a",border:"1px solid #1e293b",borderRadius:8,padding:"6px 12px"}}>
         <span style={{fontFamily:"DM Sans,sans-serif",fontSize:13,color:"#e2e8f0"}}>{t}</span>
         <button onClick={()=>setItems(items.filter(x=>x!==t))} style={{background:"none",border:"none",color:"#ef4444",cursor:"pointer",fontSize:14}}>✕</button>
       </div>)}
@@ -1408,6 +1482,8 @@ export default function App() {
   const [log,              setLog]              = useState(S_LOG);
   const [tiposEquipo,      setTiposEquipo]      = useState(TIPOS_EQUIPO_SEED);
   const [modelosPorTipo,   setModelosPorTipo]   = useState({});
+  const [marcasPorTipo,    setMarcasPorTipo]    = useState({});
+  const [ubicaciones,      setUbicaciones]      = useState([]);
   const [estadosEquipo,    setEstadosEquipo]    = useState(ESTADOS_SEED);
   const [notificaciones,   setNotificaciones]   = useState(S_NOTIF);
   const [etiquetasCliente, setEtiquetasCliente] = useState(S_ETIQUETAS_CLIENTE);
@@ -1482,6 +1558,8 @@ export default function App() {
         if (s.log) setLog(s.log);
         if (s.tiposEquipo) setTiposEquipo(s.tiposEquipo);
         if (s.modelosPorTipo) setModelosPorTipo(s.modelosPorTipo);
+        if (s.marcasPorTipo) setMarcasPorTipo(s.marcasPorTipo);
+        if (s.ubicaciones) setUbicaciones(s.ubicaciones);
         if (s.estadosEquipo) setEstadosEquipo(s.estadosEquipo.filter(e => e.id !== "esperando_repuestos"));
         if (s.notificaciones) setNotificaciones(s.notificaciones);
         if (s.etiquetasCliente) setEtiquetasCliente(s.etiquetasCliente);
@@ -1498,12 +1576,12 @@ export default function App() {
     const t = setTimeout(() => {
       supabase.from(STATE_TABLE).upsert({
         id: STATE_ROW_ID,
-        data: { clientes, equipos, ordenesTrabajos, log, tiposEquipo, modelosPorTipo, estadosEquipo, notificaciones, etiquetasCliente, vistos },
+        data: { clientes, equipos, ordenesTrabajos, log, tiposEquipo, modelosPorTipo, marcasPorTipo, ubicaciones, estadosEquipo, notificaciones, etiquetasCliente, vistos },
         updated_at: new Date().toISOString(),
       }).then(({ error }) => { if (error) console.error("Error guardando en Supabase:", error); });
     }, 600);
     return () => clearTimeout(t);
-  }, [clientes, equipos, ordenesTrabajos, log, tiposEquipo, modelosPorTipo, estadosEquipo, notificaciones, etiquetasCliente, vistos, loaded]);
+  }, [clientes, equipos, ordenesTrabajos, log, tiposEquipo, modelosPorTipo, marcasPorTipo, ubicaciones, estadosEquipo, notificaciones, etiquetasCliente, vistos, loaded]);
 
   function addLog(accion,detalle=""){setLog(prev=>[...prev,{id:uid(),usuarioId:user?.id,accion,detalle,fecha:new Date().toISOString()}]);}
   function marcarVistoEquipo(equipoId){
@@ -1526,7 +1604,7 @@ export default function App() {
     if(!supabase) return;
     const { error } = await supabase.from(STATE_TABLE).upsert({
       id: STATE_ROW_ID,
-      data: { clientes, equipos, ordenesTrabajos, log, tiposEquipo, modelosPorTipo, estadosEquipo, notificaciones, etiquetasCliente, vistos },
+      data: { clientes, equipos, ordenesTrabajos, log, tiposEquipo, modelosPorTipo, marcasPorTipo, ubicaciones, estadosEquipo, notificaciones, etiquetasCliente, vistos },
       updated_at: new Date().toISOString(),
     });
     if(error) console.error("Error guardando en Supabase:", error);
@@ -1547,7 +1625,7 @@ export default function App() {
   if (!user) return <Login/>;
   if (!loaded) return <div style={{display:"flex",alignItems:"center",justifyContent:"center",height:"100vh",color:"#64748b",fontFamily:"DM Sans,sans-serif",background:"#070d1a"}}>Cargando…</div>;
 
-  const ctx = { user, usuarios, setUsuarios, clientes, setClientes, equipos, setEquipos, ordenesTrabajos, setOrdenesTrabajo, log, addLog, tiposEquipo, setTiposEquipo, modelosPorTipo, setModelosPorTipo, estadosEquipo, setEstadosEquipo, notificaciones, setNotificaciones, etiquetasCliente, setEtiquetasCliente, vistos, setVistos, marcarVistoEquipo, marcarVistoOT };
+  const ctx = { user, usuarios, setUsuarios, clientes, setClientes, equipos, setEquipos, ordenesTrabajos, setOrdenesTrabajo, log, addLog, tiposEquipo, setTiposEquipo, modelosPorTipo, setModelosPorTipo, marcasPorTipo, setMarcasPorTipo, ubicaciones, setUbicaciones, estadosEquipo, setEstadosEquipo, notificaciones, setNotificaciones, etiquetasCliente, setEtiquetasCliente, vistos, setVistos, marcarVistoEquipo, marcarVistoOT };
 
   const vista = {
     dashboard:    <Dashboard    setModulo={setModulo}/>,
