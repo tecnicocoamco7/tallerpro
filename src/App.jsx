@@ -178,7 +178,7 @@ function OTForm({ data, equipos, clientes, usuarios, onSave, onCancel }) {
       </Field>
       <Field label="Equipo">
         <BuscadorEquipo equipos={equipos} clientes={clientes} selected={f.equipoId}
-          onSelect={id=>{ set("equipoId",id); const eq=equipos.find(e=>e.id===id); if(eq) set("clienteId",eq.clienteId); }}/>
+          onSelect={id=>{ set("equipoId",id); const eq=equipos.find(e=>e.id===id); if(eq){ set("clienteId",eq.clienteId); if(!f.horometro) set("horometro",eq.horometro||""); } }}/>
       </Field>
       <Field label="Cliente" half>
         <Sel value={f.clienteId||""} onChange={e=>set("clienteId",Number(e.target.value))} options={[{v:"",l:"— Seleccionar —"},...clientes.map(c=>({v:c.id,l:c.nombre}))]}/>
@@ -188,6 +188,9 @@ function OTForm({ data, equipos, clientes, usuarios, onSave, onCancel }) {
       </Field>
       <Field label="Prioridad" half>
         <Sel value={f.prioridad} onChange={e=>set("prioridad",e.target.value)} options={PRIORIDADES.map(p=>({v:p.id,l:p.label}))}/>
+      </Field>
+      <Field label="Horómetro actual (h)" half>
+        <Input value={f.horometro||""} onChange={e=>set("horometro",e.target.value)} type="number" placeholder="Opcional"/>
       </Field>
       <Field label="Descripción / detalles">
         <Input value={f.descripcion} onChange={e=>set("descripcion",e.target.value)} textarea placeholder="Describe detalladamente el trabajo a realizar, síntomas, observaciones..."/>
@@ -202,7 +205,7 @@ function OTForm({ data, equipos, clientes, usuarios, onSave, onCancel }) {
 
 // ── DETALLE OT ────────────────────────────────────────────────────────────────
 function OTDetalle({ ot, onClose }) {
-  const { equipos, clientes, usuarios, ordenesTrabajos, setOrdenesTrabajo, user, addLog, notificaciones, setNotificaciones, marcarVistoOT } = useApp();
+  const { equipos, setEquipos, clientes, usuarios, ordenesTrabajos, setOrdenesTrabajo, user, addLog, notificaciones, setNotificaciones, marcarVistoOT } = useApp();
   const [editando,      setEditando]      = useState(false);
   const [nuevoComentario, setNuevoComentario] = useState("");
   const esAdmin = user.rol==="admin";
@@ -240,6 +243,10 @@ function OTDetalle({ ot, onClose }) {
 
   function guardarEdicion(data) {
     setOrdenesTrabajo(ordenesTrabajos.map(o=>o.id===ot.id?{...o,...data,comentarios:ot.comentarios}:o));
+    if (data.horometro && data.equipoId) {
+      setEquipos(equipos.map(e=>e.id===data.equipoId?{...e,horometro:data.horometro}:e));
+      addLog(`Actualizó horómetro de equipo a ${data.horometro} h (desde OT "${data.titulo}")`);
+    }
     addLog(`Editó OT: ${data.titulo}`);
     setEditando(false);
     onClose();
@@ -274,7 +281,7 @@ function OTDetalle({ ot, onClose }) {
       </div>
 
       <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8, marginBottom:16 }}>
-        {[["Equipo",eq?`${eq.marca} ${eq.modelo}`:"—"],["Serie",eq?.serie||"—"],["Cliente",cli?.nombre||"—"],["Técnico",tec?.nombre||"Sin asignar"],["Creado por",creador?.nombre||"—"],["Abierta",fmtDT(ot.fecha)],["Cerrada",ot.fechaCierre?fmtDT(ot.fechaCierre):"—"]].map(([l,v])=>(
+        {[["Equipo",eq?`${eq.marca} ${eq.modelo}`:"—"],["Serie",eq?.serie||"—"],["Cliente",cli?.nombre||"—"],["Técnico",tec?.nombre||"Sin asignar"],["Horómetro",ot.horometro?`${ot.horometro} h`:"—"],["Creado por",creador?.nombre||"—"],["Abierta",fmtDT(ot.fecha)],["Cerrada",ot.fechaCierre?fmtDT(ot.fechaCierre):"—"]].map(([l,v])=>(
           <div key={l} style={{ padding:"8px 0", borderBottom:"1px solid #1e293b" }}>
             <div style={{ fontFamily:"DM Sans,sans-serif", color:"#64748b", fontSize:11, fontWeight:600, textTransform:"uppercase" }}>{l}</div>
             <div style={{ fontFamily:"DM Sans,sans-serif", color:"#e2e8f0", fontSize:13, marginTop:2 }}>{v}</div>
@@ -395,6 +402,7 @@ function Dashboard({ setModulo }) {
           {eq&&<span>{eq.marca} {eq.modelo}</span>}
           {tec&&<span>🛠 {tec.nombre}</span>}
           {creador&&<span>✍️ {creador.nombre}</span>}
+          {ot.horometro&&<span>⏱ {ot.horometro} h</span>}
           <span style={{color:accentColor}}>📅 {fmt(ot.fecha)} · hace {dias} día{dias!==1?"s":""}</span>
         </div>
         {ot.descripcion&&<div style={{ fontFamily:"DM Sans,sans-serif", color:"#e2e8f0", fontSize:12, marginTop:8 }}>{ot.descripcion.substring(0,80)}{ot.descripcion.length>80?"…":""}</div>}
@@ -493,7 +501,7 @@ function Dashboard({ setModulo }) {
 
 // ── ÓRDENES DE TRABAJO ────────────────────────────────────────────────────────
 function OrdenesTrabajo({ setModulo }) {
-  const { ordenesTrabajos, setOrdenesTrabajo, equipos, clientes, usuarios, user, addLog, notificaciones, setNotificaciones, vistos, marcarVistoOT } = useApp();
+  const { ordenesTrabajos, setOrdenesTrabajo, equipos, setEquipos, clientes, usuarios, user, addLog, notificaciones, setNotificaciones, vistos, marcarVistoOT } = useApp();
   const [form,         setForm]         = useState(null);
   const [verOT,        setVerOT]        = useState(null);
   const [filtroEstado, setFiltroEstado] = useState("abiertas");
@@ -516,6 +524,9 @@ function OrdenesTrabajo({ setModulo }) {
     const nueva={...data,id:uid(),estado:"abierta",fecha:new Date().toISOString(),fechaCierre:null,comentarios:[],creadoPor:user.id};
     setOrdenesTrabajo([...ordenesTrabajos,nueva]);
     addLog(`Creó OT: ${data.titulo}`);
+    if(data.horometro && data.equipoId){
+      setEquipos(equipos.map(e=>e.id===data.equipoId?{...e,horometro:data.horometro}:e));
+    }
     if(data.tecnicoId){
       const nn={...notificaciones};
       nn[data.tecnicoId]=[...(nn[data.tecnicoId]||[]),{id:uid(),tipo:"ot_asignada",referenciaId:nueva.id,visto:false,fecha:new Date().toISOString(),texto:`Se te asignó una OT: ${data.titulo}`}];
@@ -535,7 +546,7 @@ function OrdenesTrabajo({ setModulo }) {
 
   return (
     <div>
-      <PageHeader title="Órdenes de Trabajo" sub={`${ordenesTrabajos.filter(o=>o.estado==="abierta").length} abiertas`} onBack={()=>setModulo("dashboard")} action={esAdmin&&<Btn onClick={()=>setForm({titulo:"",descripcion:"",equipoId:null,clienteId:"",tecnicoId:"",prioridad:"media"})}>+ Nueva OT</Btn>}/>
+      <PageHeader title="Órdenes de Trabajo" sub={`${ordenesTrabajos.filter(o=>o.estado==="abierta").length} abiertas`} onBack={()=>setModulo("dashboard")} action={esAdmin&&<Btn onClick={()=>setForm({titulo:"",descripcion:"",equipoId:null,clienteId:"",tecnicoId:"",prioridad:"media",horometro:""})}>+ Nueva OT</Btn>}/>
 
       <Card style={{marginBottom:20,padding:"14px 16px"}}>
         <div style={{display:"flex",flexWrap:"wrap",gap:14,alignItems:"center"}}>
@@ -588,6 +599,7 @@ function OrdenesTrabajo({ setModulo }) {
                   {cli&&<span>👤 {cli.nombre}</span>}
                   {tec&&<span>🛠 {tec.nombre}</span>}
                   {creador&&<span>✍️ {creador.nombre}</span>}
+                  {ot.horometro&&<span>⏱ {ot.horometro} h</span>}
                   <span>📅 {fmt(ot.fecha)}</span>
                   <span>💬 {(ot.comentarios||[]).length} comentarios</span>
                 </div>
@@ -784,6 +796,9 @@ function PerfilEquipo({ equipoId, onVolver, setModulo }) {
     const nueva={...data,id:uid(),equipoId:eq.id,clienteId:eq.clienteId,estado:"abierta",fecha:new Date().toISOString(),fechaCierre:null,comentarios:[],creadoPor:user.id};
     setOrdenesTrabajo([...ordenesTrabajos,nueva]);
     addLog(`Creó OT en ${eq.serie}: ${data.titulo}`);
+    if(data.horometro){
+      setEquipos(equipos.map(e=>e.id===eq.id?{...e,horometro:data.horometro}:e));
+    }
     if(data.tecnicoId){const nn={...notificaciones};nn[data.tecnicoId]=[...(nn[data.tecnicoId]||[]),{id:uid(),tipo:"ot_asignada",referenciaId:nueva.id,visto:false,fecha:new Date().toISOString(),texto:`OT asignada: ${data.titulo}`}];setNotificaciones(nn);}
     setFormOT(null);
   }
@@ -878,7 +893,7 @@ function PerfilEquipo({ equipoId, onVolver, setModulo }) {
 
     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
       <div style={{fontFamily:"Syne,sans-serif",fontWeight:700,color:"#f1f5f9",fontSize:16}}>Órdenes de Trabajo ({otEq.length})</div>
-      {esAdmin&&<Btn sm onClick={()=>setFormOT({titulo:"",descripcion:"",tecnicoId:"",prioridad:"media",clienteId:eq.clienteId})}>+ Nueva OT</Btn>}
+      {esAdmin&&<Btn sm onClick={()=>setFormOT({titulo:"",descripcion:"",tecnicoId:"",prioridad:"media",clienteId:eq.clienteId,equipoId:eq.id,horometro:eq.horometro||""})}>+ Nueva OT</Btn>}
     </div>
     {otEq.length===0&&<EmptyState msg="Sin OT para este equipo."/>}
     {otEq.map(ot=>{
