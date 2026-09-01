@@ -1492,6 +1492,7 @@ export default function App() {
 
   const [loaded, setLoaded] = useState(!supabase);
   const [authChecked, setAuthChecked] = useState(!supabase);
+  const [errorCarga, setErrorCarga] = useState(false);
   const hydrating = useRef(false);
   const hydratedConUsuario = useRef(false);
 
@@ -1536,39 +1537,64 @@ export default function App() {
     if (!authChecked) return;
     if (!user) { setLoaded(true); return; }
     setLoaded(false);
+    setErrorCarga(false);
+    let cancelado = false;
     (async () => {
       hydrating.current = true;
-      const { data, error } = await supabase.from(STATE_TABLE).select("data").eq("id", STATE_ROW_ID).maybeSingle();
-      if (error) console.error("Error cargando de Supabase:", error);
-      if (data && data.data) {
-        const s = data.data;
-        if (s.clientes) setClientes(s.clientes);
-        if (s.equipos) {
-          // Migracion: "esperando_repuestos" dejo de ser un estado exclusivo y paso a
-          // ser una etiqueta independiente (esperandoRepuestos). Convertimos datos viejos.
-          const equiposMigrados = s.equipos.map(eq => {
-            if (eq.estado === "esperando_repuestos") {
-              return { ...eq, estado: "operativo", esperandoRepuestos: true };
+      // CRÍTICO: si esta lectura falla (red, Supabase recién despertando de pausa, etc.)
+      // NUNCA hay que seguir adelante como si "no hubiera datos", porque el guardado
+      // automático de más abajo terminaría sobreescribiendo la información real en la
+      // base de datos con un estado vacío. Por eso reintentamos varias veces, y si
+      // definitivamente no se puede leer, se bloquea la app con un error en vez de
+      // continuar con datos vacíos.
+      let exito = false;
+      let ultimoError = null;
+      for (let intento = 1; intento <= 5 && !cancelado; intento++) {
+        const { data, error } = await supabase.from(STATE_TABLE).select("data").eq("id", STATE_ROW_ID).maybeSingle();
+        if (!error) {
+          exito = true;
+          if (data && data.data) {
+            const s = data.data;
+            if (s.clientes) setClientes(s.clientes);
+            if (s.equipos) {
+              // Migracion: "esperando_repuestos" dejo de ser un estado exclusivo y paso a
+              // ser una etiqueta independiente (esperandoRepuestos). Convertimos datos viejos.
+              const equiposMigrados = s.equipos.map(eq => {
+                if (eq.estado === "esperando_repuestos") {
+                  return { ...eq, estado: "operativo", esperandoRepuestos: true };
+                }
+                return eq;
+              });
+              setEquipos(equiposMigrados);
             }
-            return eq;
-          });
-          setEquipos(equiposMigrados);
+            if (s.ordenesTrabajos) setOrdenesTrabajo(s.ordenesTrabajos);
+            if (s.log) setLog(s.log);
+            if (s.tiposEquipo) setTiposEquipo(s.tiposEquipo);
+            if (s.modelosPorTipo) setModelosPorTipo(s.modelosPorTipo);
+            if (s.marcasPorTipo) setMarcasPorTipo(s.marcasPorTipo);
+            if (s.ubicaciones) setUbicaciones(s.ubicaciones);
+            if (s.estadosEquipo) setEstadosEquipo(s.estadosEquipo.filter(e => e.id !== "esperando_repuestos"));
+            if (s.notificaciones) setNotificaciones(s.notificaciones);
+            if (s.etiquetasCliente) setEtiquetasCliente(s.etiquetasCliente);
+            if (s.vistos) setVistos(s.vistos);
+          }
+          break;
         }
-        if (s.ordenesTrabajos) setOrdenesTrabajo(s.ordenesTrabajos);
-        if (s.log) setLog(s.log);
-        if (s.tiposEquipo) setTiposEquipo(s.tiposEquipo);
-        if (s.modelosPorTipo) setModelosPorTipo(s.modelosPorTipo);
-        if (s.marcasPorTipo) setMarcasPorTipo(s.marcasPorTipo);
-        if (s.ubicaciones) setUbicaciones(s.ubicaciones);
-        if (s.estadosEquipo) setEstadosEquipo(s.estadosEquipo.filter(e => e.id !== "esperando_repuestos"));
-        if (s.notificaciones) setNotificaciones(s.notificaciones);
-        if (s.etiquetasCliente) setEtiquetasCliente(s.etiquetasCliente);
-        if (s.vistos) setVistos(s.vistos);
+        ultimoError = error;
+        console.error(`Error cargando de Supabase (intento ${intento}/5):`, error);
+        if (intento < 5) await new Promise(r => setTimeout(r, 1000 * intento));
       }
+      if (cancelado) return;
       hydrating.current = false;
+      if (!exito) {
+        console.error("No se pudo cargar el estado tras varios intentos:", ultimoError);
+        setErrorCarga(true);
+        return; // no marcamos hydratedConUsuario: el guardado automático queda bloqueado
+      }
       hydratedConUsuario.current = true;
       setLoaded(true);
     })();
+    return () => { cancelado = true; };
   }, [authChecked, user?.id]);
 
   useEffect(() => {
@@ -1623,6 +1649,19 @@ export default function App() {
 
   if (!authChecked) return <div style={{display:"flex",alignItems:"center",justifyContent:"center",height:"100vh",color:"#64748b",fontFamily:"DM Sans,sans-serif",background:"#070d1a"}}>Cargando…</div>;
   if (!user) return <Login/>;
+  if (errorCarga) return (
+    <div style={{display:"flex",alignItems:"center",justifyContent:"center",height:"100vh",background:"#070d1a",padding:20}}>
+      <div style={{maxWidth:420,textAlign:"center"}}>
+        <div style={{fontSize:40,marginBottom:12}}>⚠️</div>
+        <div style={{fontFamily:"Syne,sans-serif",fontWeight:800,color:"#f1f5f9",fontSize:18,marginBottom:8}}>No se pudo cargar la información</div>
+        <div style={{fontFamily:"DM Sans,sans-serif",color:"#94a3b8",fontSize:13,marginBottom:20,lineHeight:1.6}}>
+          Hubo un problema de conexión con la base de datos (a veces pasa si el proyecto de Supabase recién se reactivó tras estar en pausa).
+          Por seguridad, la app no va a continuar ni a guardar nada hasta poder confirmar tus datos reales, para no arriesgarse a sobreescribirlos.
+        </div>
+        <Btn onClick={()=>window.location.reload()}>Reintentar</Btn>
+      </div>
+    </div>
+  );
   if (!loaded) return <div style={{display:"flex",alignItems:"center",justifyContent:"center",height:"100vh",color:"#64748b",fontFamily:"DM Sans,sans-serif",background:"#070d1a"}}>Cargando…</div>;
 
   const ctx = { user, usuarios, setUsuarios, clientes, setClientes, equipos, setEquipos, ordenesTrabajos, setOrdenesTrabajo, log, addLog, tiposEquipo, setTiposEquipo, modelosPorTipo, setModelosPorTipo, marcasPorTipo, setMarcasPorTipo, ubicaciones, setUbicaciones, estadosEquipo, setEstadosEquipo, notificaciones, setNotificaciones, etiquetasCliente, setEtiquetasCliente, vistos, setVistos, marcarVistoEquipo, marcarVistoOT };
