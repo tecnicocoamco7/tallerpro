@@ -1493,8 +1493,10 @@ export default function App() {
   const [loaded, setLoaded] = useState(!supabase);
   const [authChecked, setAuthChecked] = useState(!supabase);
   const [errorCarga, setErrorCarga] = useState(false);
+  const [guardadoBloqueado, setGuardadoBloqueado] = useState(false);
   const hydrating = useRef(false);
   const hydratedConUsuario = useRef(false);
+  const tuvoDatosReales = useRef(false);
 
   async function cargarPerfil(session) {
     if (!session) { setUser(null); return; }
@@ -1555,6 +1557,9 @@ export default function App() {
           exito = true;
           if (data && data.data) {
             const s = data.data;
+            if ((s.clientes && s.clientes.length>0) || (s.equipos && s.equipos.length>0) || (s.ordenesTrabajos && s.ordenesTrabajos.length>0)) {
+              tuvoDatosReales.current = true;
+            }
             if (s.clientes) setClientes(s.clientes);
             if (s.equipos) {
               // Migracion: "esperando_repuestos" dejo de ser un estado exclusivo y paso a
@@ -1599,6 +1604,17 @@ export default function App() {
 
   useEffect(() => {
     if (!supabase || !loaded || hydrating.current || !hydratedConUsuario.current) return;
+    // Red de seguridad adicional: si en algún momento de esta sesión confirmamos que
+    // había información real cargada (clientes, equipos u OTs), y de repente el estado
+    // local quedaría completamente vacío, NUNCA lo guardamos automáticamente. Es muy
+    // poco probable que un uso normal borre absolutamente todo de una sola vez; es mucho
+    // más probable que sea un error (sesión reiniciada, pestaña recargada a medias, etc.).
+    const quedariaTodoVacio = clientes.length===0 && equipos.length===0 && ordenesTrabajos.length===0 && log.length===0;
+    if (tuvoDatosReales.current && quedariaTodoVacio) {
+      console.error("Se bloqueó un guardado automático que hubiera dejado todos los datos vacíos.");
+      setGuardadoBloqueado(true);
+      return;
+    }
     const t = setTimeout(() => {
       supabase.from(STATE_TABLE).upsert({
         id: STATE_ROW_ID,
@@ -1663,6 +1679,20 @@ export default function App() {
     </div>
   );
   if (!loaded) return <div style={{display:"flex",alignItems:"center",justifyContent:"center",height:"100vh",color:"#64748b",fontFamily:"DM Sans,sans-serif",background:"#070d1a"}}>Cargando…</div>;
+
+  if (guardadoBloqueado) return (
+    <div style={{display:"flex",alignItems:"center",justifyContent:"center",height:"100vh",background:"#070d1a",padding:20}}>
+      <div style={{maxWidth:420,textAlign:"center"}}>
+        <div style={{fontSize:40,marginBottom:12}}>🛑</div>
+        <div style={{fontFamily:"Syne,sans-serif",fontWeight:800,color:"#f1f5f9",fontSize:18,marginBottom:8}}>Guardado automático bloqueado por seguridad</div>
+        <div style={{fontFamily:"DM Sans,sans-serif",color:"#94a3b8",fontSize:13,marginBottom:20,lineHeight:1.6}}>
+          Esta pantalla se quedó sin información (clientes, equipos, órdenes de trabajo) a pesar de que antes sí la tenía cargada.
+          Para no arriesgarnos a borrar tus datos reales en la base de datos, se bloqueó el guardado automático. No se perdió nada todavía: recargá la página para volver a traer la información correcta.
+        </div>
+        <Btn onClick={()=>window.location.reload()}>Recargar</Btn>
+      </div>
+    </div>
+  );
 
   const ctx = { user, usuarios, setUsuarios, clientes, setClientes, equipos, setEquipos, ordenesTrabajos, setOrdenesTrabajo, log, addLog, tiposEquipo, setTiposEquipo, modelosPorTipo, setModelosPorTipo, marcasPorTipo, setMarcasPorTipo, ubicaciones, setUbicaciones, estadosEquipo, setEstadosEquipo, notificaciones, setNotificaciones, etiquetasCliente, setEtiquetasCliente, vistos, setVistos, marcarVistoEquipo, marcarVistoOT };
 
